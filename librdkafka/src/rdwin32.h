@@ -33,7 +33,11 @@
 
 
 #include <stdlib.h>
+#if defined(_WIN32) && _MSC_VER < 1800
+#include <inttypes_win32.h>
+#else
 #include <inttypes.h>
+#endif
 #include <sys/types.h>
 #include <time.h>
 #include <assert.h>

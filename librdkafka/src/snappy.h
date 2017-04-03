@@ -1,7 +1,13 @@
 #ifndef _LINUX_SNAPPY_H
 #define _LINUX_SNAPPY_H 1
 
+#if !defined(__cplusplus) && defined(_WIN32) && _MSC_VER < 1800
+typedef int bool
+#define true 1
+#define false 0
+#else
 #include <stdbool.h>
+#endif
 #include <stddef.h>
 
 /* Only needed for compression. This preallocates the worst case */
