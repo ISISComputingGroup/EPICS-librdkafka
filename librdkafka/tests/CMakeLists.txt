@@ -54,11 +54,17 @@ set(
 
     test.c
     testcpp.cpp
-    sockem.c
 )
+#    sockem.c
+#    <ClCompile Include="..\..\src\tinycthread.c" />
+#    <ClCompile Include="..\..\src\rdlist.c" />
+
+if(WIN32)
+add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
 
 add_executable(rdkafka_test ${sources})
-target_link_libraries(rdkafka_test PUBLIC rdkafka++)
+target_link_libraries(rdkafka_test PUBLIC rdkafka++ rdkafka)
 
 add_test(NAME RdKafkaTestInParallel COMMAND rdkafka_test -p5)
 add_test(NAME RdKafkaTestSequentially COMMAND rdkafka_test -p1)

@@ -36,6 +36,10 @@ set(
     tinycthread.c
 )
 
+if(WIN32)
+add_definitions(-DLIBRDKAFKA_EXPORTS -D_CRT_SECURE_NO_WARNINGS)
+endif()
+
 if(WITH_SASL)
   list(
       APPEND
@@ -59,7 +63,7 @@ if(NOT HAVE_REGEX)
   list(APPEND sources regexp.c)
 endif()
 
-add_library(rdkafka ${sources})
+add_library(rdkafka SHARED ${sources})
 
 # Support '#include <rdkafka.h>'
 target_include_directories(rdkafka PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>")
@@ -95,9 +99,11 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(rdkafka PUBLIC Threads::Threads)
 
+if(NOT WIN32)
 if(WITH_SASL)
   pkg_check_modules(SASL REQUIRED libsasl2)
   target_link_libraries(rdkafka PUBLIC ${SASL_LIBRARIES})
+endif()
 endif()
 
 install(

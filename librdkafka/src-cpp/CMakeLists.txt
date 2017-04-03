@@ -1,5 +1,6 @@
 add_library(
     rdkafka++
+    SHARED
     ConfImpl.cpp
     ConsumerImpl.cpp
     HandleImpl.cpp
@@ -12,6 +13,10 @@ add_library(
     TopicImpl.cpp
     TopicPartitionImpl.cpp
 )
+
+if(WIN32)
+add_definitions(-DLIBRDKAFKACPP_EXPORTS -D_CRT_SECURE_NO_WARNINGS)
+endif()
 
 target_link_libraries(rdkafka++ PUBLIC rdkafka)
 
