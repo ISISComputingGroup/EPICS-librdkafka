@@ -1,6 +1,6 @@
 add_library(
     rdkafka++
-    SHARED
+    ${RDKAFKA_BUILD_TYPE}
     ConfImpl.cpp
     ConsumerImpl.cpp
     HandleImpl.cpp

@@ -56,6 +56,8 @@ option(WITH_SASL "With SASL" ${with_sasl_default})
 option(RDKAFKA_BUILD_EXAMPLES "Build examples" ON)
 option(RDKAFKA_BUILD_TESTS "Build tests" ON)
 
+set(RDKAFKA_BUILD_TYPE "SHARED" CACHE STRING "Build Type")
+
 set(TRYCOMPILE_SRC_DIR "${CMAKE_CURRENT_LIST_DIR}/packaging/cmake/try_compile")
 
 # In:

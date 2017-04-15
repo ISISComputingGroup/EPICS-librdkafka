@@ -30,7 +30,11 @@ ifneq ($(findstring debug,$(EPICS_HOST_ARCH)),)
 CMAKE_CONFIG_FLAGS += -DCMAKE_BUILD_TYPE:STRING=Debug
 CMAKE_CONFIG=Debug
 else
+CMAKE_CONFIG_FLAGS += -DCMAKE_BUILD_TYPE:STRING=RelWithDebInfo
 CMAKE_CONFIG=RelWithDebInfo
+endif
+ifneq ($(findstring static,$(EPICS_HOST_ARCH)),)
+CMAKE_CONFIG_FLAGS += -DRDKAFKA_BUILD_TYPE:STRING=STATIC
 endif
 
 include $(TOP)/configure/RULES

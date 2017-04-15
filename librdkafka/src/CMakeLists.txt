@@ -63,7 +63,7 @@ if(NOT HAVE_REGEX)
   list(APPEND sources regexp.c)
 endif()
 
-add_library(rdkafka SHARED ${sources})
+add_library(rdkafka ${RDKAFKA_BUILD_TYPE} ${sources})
 
 # Support '#include <rdkafka.h>'
 target_include_directories(rdkafka PUBLIC "$<BUILD_INTERFACE:${CMAKE_CURRENT_LIST_DIR}>")
