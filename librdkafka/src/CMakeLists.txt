@@ -37,7 +37,12 @@ set(
 )
 
 if(WIN32)
-add_definitions(-DLIBRDKAFKA_EXPORTS -D_CRT_SECURE_NO_WARNINGS)
+  add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+  if (${RDKAFKA_BUILD_TYPE} STREQUAL "STATIC")
+    add_definitions(-DLIBRDKAFKA_STATICLIB)
+  else()
+    add_definitions(-DLIBRDKAFKA_EXPORTS)
+  endif()
 endif()
 
 if(WITH_SASL)

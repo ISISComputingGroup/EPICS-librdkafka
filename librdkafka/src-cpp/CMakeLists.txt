@@ -15,7 +15,12 @@ add_library(
 )
 
 if(WIN32)
-add_definitions(-DLIBRDKAFKACPP_EXPORTS -D_CRT_SECURE_NO_WARNINGS)
+  add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+  if (${RDKAFKA_BUILD_TYPE} STREQUAL "STATIC")
+    add_definitions(-DLIBRDKAFKA_STATICLIB)
+  else()
+    add_definitions(-DLIBRDKAFKACPP_EXPORTS)
+  endif()
 endif()
 
 target_link_libraries(rdkafka++ PUBLIC rdkafka)

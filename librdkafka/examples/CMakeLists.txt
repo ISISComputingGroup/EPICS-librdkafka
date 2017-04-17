@@ -1,6 +1,9 @@
 if(WIN32)
-set(GETOPT ${CMAKE_SOURCE_DIR}/win32/wingetopt.c)
-include_directories(${CMAKE_SOURCE_DIR}/win32)
+  set(GETOPT ${CMAKE_SOURCE_DIR}/win32/wingetopt.c)
+  include_directories(${CMAKE_SOURCE_DIR}/win32)
+  if (${RDKAFKA_BUILD_TYPE} STREQUAL "STATIC")
+    add_definitions(-DLIBRDKAFKA_STATICLIB)
+  endif()
 endif()
 
 #add_executable(rdkafka_example rdkafka_example.c ${GETOPT})
