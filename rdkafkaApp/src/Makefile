@@ -3,9 +3,10 @@ include $(TOP)/configure/CONFIG
 
 # extract visual studio major version number from path
 # unfortunately cannot use %.% so using %.0 but may not match minor version number changes e.g. 10.1
-#VS_VERS=$(filter %.0,$(subst \, ,$(VSINSTALLDIR)))
-#VS_MAJOR=$(word 1,$(subst ., ,$(VS_VERS)))
-VS_MAJOR=$(word 1,$(subst ., ,$(VCVERSION)))
+
+VS_VERS=$(filter %.0,$(subst \, ,$(VisualStudioVersion)))
+VS_MAJOR=$(word 1,$(subst ., ,$(VS_VERS)))
+
 
 INSTALL_DIR=$(LIBRDKAFKA)/install/$(EPICS_HOST_ARCH)
 CMAKE_BUILD_FLAGS=
