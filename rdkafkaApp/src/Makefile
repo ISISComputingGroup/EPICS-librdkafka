@@ -8,10 +8,11 @@ VS_VERS=$(filter %.0,$(subst \, ,$(VisualStudioVersion)))
 VS_MAJOR=$(word 1,$(subst ., ,$(VS_VERS)))
 
 
+# INSTALL_DIR needs to be an absolute path
 INSTALL_DIR=$(LIBRDKAFKA)/install/$(EPICS_HOST_ARCH)
 CMAKE_BUILD_FLAGS=
-CMAKE_CONFIG_FLAGS=-DZLIB_ROOT:STRING="$(EPICS_ROOT)/support/zlib/master;$(EPICS_ROOT)/support/zlib/master/lib/$(EPICS_HOST_ARCH)"
-CMAKE_CONFIG_FLAGS_WIN32=-DOPENSSL_ROOT_DIR:STRING=$(EPICS_ROOT)/support/OpenSSL/master/install/$(EPICS_HOST_ARCH) -DZLIB_ROOT:STRING="$(EPICS_ROOT)/support/zlib/master;$(EPICS_ROOT)/support/zlib/master/lib/$(EPICS_HOST_ARCH)"
+CMAKE_CONFIG_FLAGS=-DZLIB_ROOT:STRING="$(ZLIB);$(ZLIB)/lib/$(EPICS_HOST_ARCH)"
+CMAKE_CONFIG_FLAGS_WIN32=-DOPENSSL_ROOT_DIR:STRING=$(OPENSSL)/install/$(EPICS_HOST_ARCH) -DZLIB_ROOT:STRING="$(ZLIB);$(ZLIB)/lib/$(EPICS_HOST_ARCH)"
 
 ifneq ($(findstring linux,$(EPICS_HOST_ARCH)),)
 CMAKE_GENERATOR=Unix Makefiles
