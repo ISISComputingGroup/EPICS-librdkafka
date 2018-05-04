@@ -29,6 +29,9 @@
 # If using the sequencer, point SNCSEQ at its top directory:
 #SNCSEQ = $(MODULES)/seq-ver
 
+ZLIB=$(SUPPORT)/zlib/master
+OPENSSL=$(SUPPORT)/OpenSSL/master
+
 # EPICS_BASE should appear last so earlier modules can override stuff:
 #EPICS_BASE = C:/Instrument/Apps/EPICS/base/master
 #
