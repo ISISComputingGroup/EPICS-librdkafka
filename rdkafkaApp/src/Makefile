@@ -7,6 +7,7 @@ include $(TOP)/configure/CONFIG
 VS_VERS=$(filter %.0,$(subst \, ,$(VisualStudioVersion)))
 VS_MAJOR=$(word 1,$(subst ., ,$(VS_VERS)))
 
+CMAKE ?= cmake
 
 # INSTALL_DIR needs to be an absolute path
 INSTALL_DIR=$(LIBRDKAFKA)/install/$(EPICS_HOST_ARCH)
@@ -45,8 +46,8 @@ include $(TOP)/configure/RULES
 
 ifdef T_A
 install:
-	cmake $(TOP)/librdkafka -G "$(CMAKE_GENERATOR)" -DCMAKE_INSTALL_PREFIX:PATH="$(INSTALL_DIR)" $(CMAKE_CONFIG_FLAGS)
-	cmake --build . --target install --config $(CMAKE_CONFIG) $(CMAKE_BUILD_FLAGS)
+	$(CMAKE) $(TOP)/librdkafka -G "$(CMAKE_GENERATOR)" -DCMAKE_INSTALL_PREFIX:PATH="$(INSTALL_DIR)" $(CMAKE_CONFIG_FLAGS)
+	$(CMAKE) --build . --target install --config $(CMAKE_CONFIG) $(CMAKE_BUILD_FLAGS)
 	-$(MKDIR) $(TOP)/bin
 	-$(MKDIR) $(TOP)/bin/$(EPICS_HOST_ARCH)
 	-$(MKDIR) $(TOP)/lib
