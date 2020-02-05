@@ -19,7 +19,7 @@ ifneq ($(findstring linux,$(EPICS_HOST_ARCH)),)
 CMAKE_GENERATOR=Unix Makefiles
 else
 ifneq ($(findstring windows,$(EPICS_HOST_ARCH)),)
-VS_ARCH=$(VS_MAJOR) Win64
+VS_ARCH=$(VS_MAJOR)
 PLATFORM=x64
 CMAKE_CONFIG_FLAGS=$(CMAKE_CONFIG_FLAGS_WIN32)
 else
@@ -46,7 +46,7 @@ include $(TOP)/configure/RULES
 
 ifdef T_A
 install:
-	$(CMAKE) $(TOP)/librdkafka -G "$(CMAKE_GENERATOR)" -DCMAKE_INSTALL_PREFIX:PATH="$(INSTALL_DIR)" $(CMAKE_CONFIG_FLAGS)
+	$(CMAKE) $(TOP)/librdkafka -G "$(CMAKE_GENERATOR)" -A "$(PLATFORM)" -DCMAKE_INSTALL_PREFIX:PATH="$(INSTALL_DIR)" $(CMAKE_CONFIG_FLAGS)
 	$(CMAKE) --build . --target install --config $(CMAKE_CONFIG) $(CMAKE_BUILD_FLAGS)
 	-$(MKDIR) $(TOP)/bin
 	-$(MKDIR) $(TOP)/bin/$(EPICS_HOST_ARCH)
