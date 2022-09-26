@@ -36,6 +36,11 @@
  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
 
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wcast-align"
+#endif
+
 #ifndef SG
 #define SG /* Scatter-Gather / iovec support in Snappy */
 #endif
@@ -62,6 +67,35 @@
 #define inline __inline
 #endif
 
+static inline u64 get_unaligned64(const void *b)
+{
+	u64 ret;
+	memcpy(&ret, b, sizeof(u64));
+	return ret;
+}
+static inline u32 get_unaligned32(const void *b)
+{
+	u32 ret;
+	memcpy(&ret, b, sizeof(u32));
+	return ret;
+}
+#define get_unaligned_le32(x) (le32toh(get_unaligned32((u32 *)(x))))
+
+static inline void put_unaligned64(u64 v, void *b)
+{
+	memcpy(b, &v, sizeof(v));
+}
+static inline void put_unaligned32(u32 v, void *b)
+{
+	memcpy(b, &v, sizeof(v));
+}
+static inline void put_unaligned16(u16 v, void *b)
+{
+	memcpy(b, &v, sizeof(v));
+}
+#define put_unaligned_le16(v,x) (put_unaligned16(htole16(v), (u16 *)(x)))
+
+
 #define CRASH_UNLESS(x) BUG_ON(!(x))
 #define CHECK(cond) CRASH_UNLESS(cond)
 #define CHECK_LE(a, b) CRASH_UNLESS((a) <= (b))
@@ -71,12 +105,11 @@
 #define CHECK_LT(a, b) CRASH_UNLESS((a) < (b))
 #define CHECK_GT(a, b) CRASH_UNLESS((a) > (b))
 
-#define UNALIGNED_LOAD16(_p) get_unaligned((u16 *)(_p))
-#define UNALIGNED_LOAD32(_p) get_unaligned((u32 *)(_p))
+#define UNALIGNED_LOAD32(_p) get_unaligned32((u32 *)(_p))
 #define UNALIGNED_LOAD64(_p) get_unaligned64((u64 *)(_p))
 
-#define UNALIGNED_STORE16(_p, _val) put_unaligned(_val, (u16 *)(_p))
-#define UNALIGNED_STORE32(_p, _val) put_unaligned(_val, (u32 *)(_p))
+#define UNALIGNED_STORE16(_p, _val) put_unaligned16(_val, (u16 *)(_p))
+#define UNALIGNED_STORE32(_p, _val) put_unaligned32(_val, (u32 *)(_p))
 #define UNALIGNED_STORE64(_p, _val) put_unaligned64(_val, (u64 *)(_p))
 
 /*
@@ -1481,29 +1514,23 @@ out:
 #ifdef SG
 
 int rd_kafka_snappy_compress_iov(struct snappy_env *env,
-			struct iovec *iov_in,
-			int iov_in_len,
-			size_t input_length,
-			struct iovec *iov_out,
-			int *iov_out_len,
-			size_t *compressed_length)
-{
-	struct source reader = {
-		.iov = iov_in,
-		.iovlen = iov_in_len,
-		.total = input_length
-	};
-	struct sink writer = {
-		.iov = iov_out,
-		.iovlen = *iov_out_len,
-	};
-	int err = sn_compress(env, &reader, &writer);
+                                 const struct iovec *iov_in, size_t iov_in_cnt,
+                                 size_t input_length,
+                                 struct iovec *iov_out) {
+        struct source reader = {
+                .iov = (struct iovec *)iov_in,
+                .iovlen = (int)iov_in_cnt,
+                .total = input_length
+        };
+        struct sink writer = {
+                .iov = iov_out,
+                .iovlen = 1
+        };
+        int err = sn_compress(env, &reader, &writer);
 
-	*iov_out_len = writer.curvec + 1;
+        iov_out->iov_len = writer.written;
 
-	/* Compute how many bytes were added */
-	*compressed_length = writer.written;
-	return err;
+        return err;
 }
 EXPORT_SYMBOL(rd_kafka_snappy_compress_iov);
 
@@ -1537,10 +1564,9 @@ int rd_kafka_snappy_compress(struct snappy_env *env,
 		.iov_base = compressed,
 		.iov_len = 0xffffffff,
 	};
-	int out = 1;
-	return rd_kafka_snappy_compress_iov(env, 
-				   &iov_in, 1, input_length, 
-				   &iov_out, &out, compressed_length);
+        return rd_kafka_snappy_compress_iov(env,
+                                            &iov_in, 1, input_length,
+                                            &iov_out);
 }
 EXPORT_SYMBOL(rd_kafka_snappy_compress);
 
@@ -1580,6 +1606,122 @@ int rd_kafka_snappy_uncompress(const char *compressed, size_t n, char *uncompres
 	return rd_kafka_snappy_uncompress_iov(&iov, 1, n, uncompressed);
 }
 EXPORT_SYMBOL(rd_kafka_snappy_uncompress);
+
+
+/**
+ * @brief Decompress Snappy message with Snappy-java framing.
+ *
+ * @returns a malloced buffer with the uncompressed data, or NULL on failure.
+ */
+char *rd_kafka_snappy_java_uncompress (const char *inbuf, size_t inlen,
+                                       size_t *outlenp,
+                                       char *errstr, size_t errstr_size) {
+        int pass;
+        char *outbuf = NULL;
+
+        /**
+         * Traverse all chunks in two passes:
+         *  pass 1: calculate total uncompressed length
+         *  pass 2: uncompress
+         *
+         * Each chunk is prefixed with 4: length */
+
+        for (pass = 1 ; pass <= 2 ; pass++) {
+                ssize_t of = 0;  /* inbuf offset */
+                ssize_t uof = 0; /* outbuf offset */
+
+                while (of + 4 <= (ssize_t)inlen) {
+                        uint32_t clen; /* compressed length */
+                        size_t ulen; /* uncompressed length */
+                        int r;
+
+                        memcpy(&clen, inbuf+of, 4);
+                        clen = be32toh(clen);
+                        of += 4;
+
+                        if (unlikely(clen > inlen - of)) {
+                                rd_snprintf(errstr, errstr_size,
+                                            "Invalid snappy-java chunk length "
+                                            "%"PRId32" > %"PRIdsz
+                                            " available bytes",
+                                            clen, (ssize_t)inlen - of);
+                                return NULL;
+                        }
+
+                        /* Acquire uncompressed length */
+                        if (unlikely(!rd_kafka_snappy_uncompressed_length(
+                                             inbuf+of, clen, &ulen))) {
+                                rd_snprintf(errstr, errstr_size,
+                                            "Failed to get length of "
+                                            "(snappy-java framed) Snappy "
+                                            "compressed payload "
+                                            "(clen %"PRId32")",
+                                            clen);
+                                return NULL;
+                        }
+
+                        if (pass == 1) {
+                                /* pass 1: calculate total length */
+                                of  += clen;
+                                uof += ulen;
+                                continue;
+                        }
+
+                        /* pass 2: Uncompress to outbuf */
+                        if (unlikely((r = rd_kafka_snappy_uncompress(
+                                              inbuf+of, clen, outbuf+uof)))) {
+                                rd_snprintf(errstr, errstr_size,
+                                            "Failed to decompress Snappy-java "
+                                            "framed payload of size %"PRId32
+                                            ": %s",
+                                            clen,
+                                            rd_strerror(-r/*negative errno*/));
+                                rd_free(outbuf);
+                                return NULL;
+                        }
+
+                        of  += clen;
+                        uof += ulen;
+                }
+
+                if (unlikely(of != (ssize_t)inlen)) {
+                        rd_snprintf(errstr, errstr_size,
+                                    "%"PRIusz" trailing bytes in Snappy-java "
+                                    "framed compressed data",
+                                    inlen - of);
+                        if (outbuf)
+                                rd_free(outbuf);
+                        return NULL;
+                }
+
+                if (pass == 1) {
+                        if (uof <= 0) {
+                                rd_snprintf(errstr, errstr_size,
+                                            "Empty Snappy-java framed data");
+                                return NULL;
+                        }
+
+                        /* Allocate memory for uncompressed data */
+                        outbuf = rd_malloc(uof);
+                        if (unlikely(!outbuf)) {
+                                rd_snprintf(errstr, errstr_size,
+                                           "Failed to allocate memory "
+                                            "(%"PRIdsz") for "
+                                            "uncompressed Snappy data: %s",
+                                            uof, rd_strerror(errno));
+                                return NULL;
+                        }
+
+                } else {
+                        /* pass 2 */
+                        *outlenp = uof;
+                }
+        }
+
+        return outbuf;
+}
+
+
 
 #else
 /**
@@ -1718,3 +1860,7 @@ void rd_kafka_snappy_free_env(struct snappy_env *env)
 	clear_env(env);
 }
 EXPORT_SYMBOL(rd_kafka_snappy_free_env);
+
+#ifdef __GNUC__
+#pragma GCC diagnostic pop /* -Wcast-align ignore */
+#endif

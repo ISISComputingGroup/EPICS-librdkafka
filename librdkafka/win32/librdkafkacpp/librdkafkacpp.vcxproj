@@ -1,5 +1,5 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project DefaultTargets="Build" ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="12.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup Label="Globals">
     <ProjectGuid>{E9641737-EE62-4EC8-88C8-792D2E3CE32D}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
@@ -85,6 +85,7 @@
     <ClCompile Include="..\..\src-cpp\ConsumerImpl.cpp" />
     <ClCompile Include="..\..\src-cpp\HandleImpl.cpp" />
     <ClCompile Include="..\..\src-cpp\KafkaConsumerImpl.cpp" />
+    <ClCompile Include="..\..\src-cpp\HeadersImpl.cpp" />
     <ClCompile Include="..\..\src-cpp\MessageImpl.cpp" />
     <ClCompile Include="..\..\src-cpp\MetadataImpl.cpp" />
     <ClCompile Include="..\..\src-cpp\ProducerImpl.cpp" />

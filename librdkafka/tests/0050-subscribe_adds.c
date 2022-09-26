@@ -43,16 +43,16 @@
  *  * Verify that there were no duplicate messages.
  */
 
-int main_0050_subscribe_adds (int argc, char **argv) {
+int main_0050_subscribe_adds(int argc, char **argv) {
         rd_kafka_t *rk;
-        #define TOPIC_CNT 3
+#define TOPIC_CNT 3
         char *topic[TOPIC_CNT] = {
-                rd_strdup(test_mk_topic_name("0050_subscribe_adds_1", 1)),
-                rd_strdup(test_mk_topic_name("0050_subscribe_adds_2", 1)),
-                rd_strdup(test_mk_topic_name("0050_subscribe_adds_3", 1)),
+            rd_strdup(test_mk_topic_name("0050_subscribe_adds_1", 1)),
+            rd_strdup(test_mk_topic_name("0050_subscribe_adds_2", 1)),
+            rd_strdup(test_mk_topic_name("0050_subscribe_adds_3", 1)),
         };
         uint64_t testid;
-        int msgcnt = 100000;
+        int msgcnt = test_quick ? 100 : 10000;
         test_msgver_t mv;
         rd_kafka_conf_t *conf;
         rd_kafka_topic_conf_t *tconf;
@@ -64,14 +64,14 @@ int main_0050_subscribe_adds (int argc, char **argv) {
         testid = test_id_generate();
 
         rk = test_create_producer();
-        for (i = 0 ; i < TOPIC_CNT ; i++) {
+        for (i = 0; i < TOPIC_CNT; i++) {
                 rd_kafka_topic_t *rkt;
 
                 rkt = test_create_producer_topic(rk, topic[i], NULL);
 
                 test_produce_msgs(rk, rkt, testid, RD_KAFKA_PARTITION_UA,
                                   (msgcnt / TOPIC_CNT) * i,
-                                  (msgcnt / TOPIC_CNT), NULL, 100);
+                                  (msgcnt / TOPIC_CNT), NULL, 1000);
 
                 rd_kafka_topic_destroy(rkt);
         }
@@ -84,7 +84,7 @@ int main_0050_subscribe_adds (int argc, char **argv) {
         rk = test_create_consumer(topic[0], NULL, conf, tconf);
 
         tlist = rd_kafka_topic_partition_list_new(TOPIC_CNT);
-        for (i = 0 ; i < TOPIC_CNT ; i++) {
+        for (i = 0; i < TOPIC_CNT; i++) {
                 rd_kafka_topic_partition_list_add(tlist, topic[i],
                                                   RD_KAFKA_PARTITION_UA);
                 TEST_SAY("Subscribe to %d topic(s):\n", tlist->cnt);
@@ -100,15 +100,15 @@ int main_0050_subscribe_adds (int argc, char **argv) {
         test_consumer_poll("consume", rk, testid, -1, 0, msgcnt, &mv);
 
         /* Now remove T2 */
-        rd_kafka_topic_partition_list_del(tlist, topic[1], RD_KAFKA_PARTITION_UA);
+        rd_kafka_topic_partition_list_del(tlist, topic[1],
+                                          RD_KAFKA_PARTITION_UA);
         err = rd_kafka_subscribe(rk, tlist);
-        TEST_ASSERT(!err, "subscribe() failed: %s",
-                    rd_kafka_err2str(err));
+        TEST_ASSERT(!err, "subscribe() failed: %s", rd_kafka_err2str(err));
 
-        test_consumer_poll_no_msgs("consume", rk, testid, (int)(6000*1.5));
+        test_consumer_poll_no_msgs("consume", rk, testid, (int)(6000 * 1.5));
 
 
-        test_msgver_verify("consume", &mv, TEST_MSGVER_ORDER|TEST_MSGVER_DUP,
+        test_msgver_verify("consume", &mv, TEST_MSGVER_ORDER | TEST_MSGVER_DUP,
                            0, msgcnt);
 
         test_msgver_clear(&mv);
@@ -117,7 +117,7 @@ int main_0050_subscribe_adds (int argc, char **argv) {
         test_consumer_close(rk);
         rd_kafka_destroy(rk);
 
-        for (i = 0 ; i < TOPIC_CNT ; i++)
+        for (i = 0; i < TOPIC_CNT; i++)
                 rd_free(topic[i]);
 
         return 0;
