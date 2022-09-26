@@ -57,8 +57,8 @@ install:
 	-$(MKDIR) $(TOP)/include/librdkafka
 	$(CP) -f $(INSTALL_DIR)/include/librdkafka/*.h* $(TOP)/include/librdkafka
 	$(RMDIR) $(INSTALL_DIR)/lib/cmake
-	-$(CP) -f $(INSTALL_DIR)/lib/* $(TOP)/lib/$(EPICS_HOST_ARCH)/
-	-$(CP) -f $(INSTALL_DIR)/lib64/* $(TOP)/lib/$(EPICS_HOST_ARCH)/
+	-$(CP) -f $(INSTALL_DIR)/lib/*.* $(TOP)/lib/$(EPICS_HOST_ARCH)/
+	-$(CP) -f $(INSTALL_DIR)/lib64/*.* $(TOP)/lib/$(EPICS_HOST_ARCH)/
 	-$(CP) -f $(INSTALL_DIR)/bin/* $(TOP)/bin/$(EPICS_HOST_ARCH)/
 endif
 
