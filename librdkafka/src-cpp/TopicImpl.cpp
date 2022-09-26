@@ -43,51 +43,54 @@ const int64_t RdKafka::Topic::OFFSET_STORED = RD_KAFKA_OFFSET_STORED;
 
 const int64_t RdKafka::Topic::OFFSET_INVALID = RD_KAFKA_OFFSET_INVALID;
 
-RdKafka::Topic::~Topic () {
-
+RdKafka::Topic::~Topic() {
 }
 
-static int32_t partitioner_cb_trampoline (const rd_kafka_topic_t *rkt,
-                                          const void *keydata,
-                                          size_t keylen,
-                                          int32_t partition_cnt,
-                                          void *rkt_opaque,
-                                          void *msg_opaque) {
+static int32_t partitioner_cb_trampoline(const rd_kafka_topic_t *rkt,
+                                         const void *keydata,
+                                         size_t keylen,
+                                         int32_t partition_cnt,
+                                         void *rkt_opaque,
+                                         void *msg_opaque) {
   RdKafka::TopicImpl *topicimpl = static_cast<RdKafka::TopicImpl *>(rkt_opaque);
   std::string key(static_cast<const char *>(keydata), keylen);
   return topicimpl->partitioner_cb_->partitioner_cb(topicimpl, &key,
                                                     partition_cnt, msg_opaque);
 }
 
-static int32_t partitioner_kp_cb_trampoline (const rd_kafka_topic_t *rkt,
-                                             const void *keydata,
-                                             size_t keylen,
-                                             int32_t partition_cnt,
-                                             void *rkt_opaque,
-                                             void *msg_opaque) {
+static int32_t partitioner_kp_cb_trampoline(const rd_kafka_topic_t *rkt,
+                                            const void *keydata,
+                                            size_t keylen,
+                                            int32_t partition_cnt,
+                                            void *rkt_opaque,
+                                            void *msg_opaque) {
   RdKafka::TopicImpl *topicimpl = static_cast<RdKafka::TopicImpl *>(rkt_opaque);
-  return topicimpl->partitioner_kp_cb_->partitioner_cb(topicimpl,
-                                                       keydata, keylen,
-                                                       partition_cnt,
-                                                       msg_opaque);
+  return topicimpl->partitioner_kp_cb_->partitioner_cb(
+      topicimpl, keydata, keylen, partition_cnt, msg_opaque);
 }
 
 
 
-RdKafka::Topic *RdKafka::Topic::create (Handle *base,
-					const std::string &topic_str,
-					Conf *conf,
-					std::string &errstr) {
-  RdKafka::ConfImpl *confimpl = static_cast<RdKafka::ConfImpl *>(conf);
+RdKafka::Topic *RdKafka::Topic::create(Handle *base,
+                                       const std::string &topic_str,
+                                       const Conf *conf,
+                                       std::string &errstr) {
+  const RdKafka::ConfImpl *confimpl =
+      static_cast<const RdKafka::ConfImpl *>(conf);
   rd_kafka_topic_t *rkt;
   rd_kafka_topic_conf_t *rkt_conf;
+  rd_kafka_t *rk = dynamic_cast<HandleImpl *>(base)->rk_;
 
   RdKafka::TopicImpl *topic = new RdKafka::TopicImpl();
 
-  if (!confimpl)
-    rkt_conf = rd_kafka_topic_conf_new();
-  else /* Make a copy of conf struct to allow Conf reuse. */
+  if (!confimpl) {
+    /* Reuse default topic config, but we need our own copy to
+     * set the topic opaque. */
+    rkt_conf = rd_kafka_default_topic_conf_dup(rk);
+  } else {
+    /* Make a copy of conf struct to allow Conf reuse. */
     rkt_conf = rd_kafka_topic_conf_dup(confimpl->rkt_conf_);
+  }
 
   /* Set topic opaque to the topic so that we can reach our topic object
    * from whatever callbacks get registered.
@@ -108,9 +111,8 @@ RdKafka::Topic *RdKafka::Topic::create (Handle *base,
   }
 
 
-  if (!(rkt = rd_kafka_topic_new(dynamic_cast<HandleImpl*>(base)->rk_,
-				 topic_str.c_str(), rkt_conf))) {
-    errstr = rd_kafka_err2str(rd_kafka_errno2err(errno));
+  if (!(rkt = rd_kafka_topic_new(rk, topic_str.c_str(), rkt_conf))) {
+    errstr = rd_kafka_err2str(rd_kafka_last_error());
     delete topic;
     rd_kafka_topic_conf_destroy(rkt_conf);
     return NULL;
@@ -119,6 +121,4 @@ RdKafka::Topic *RdKafka::Topic::create (Handle *base,
   topic->rkt_ = rkt;
 
   return topic;
-
 }
-

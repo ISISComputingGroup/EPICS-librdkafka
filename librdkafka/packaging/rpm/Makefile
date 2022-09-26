@@ -8,6 +8,9 @@ MOCK_CONFIG?=default
 
 RESULT_DIR?=pkgs-$(VERSION)-$(BUILD_NUMBER)-$(MOCK_CONFIG)
 
+# Where built packages are copied with `make copy-artifacts`
+ARTIFACTS_DIR?=../../artifacts
+
 all: rpm
 
 
@@ -28,26 +31,62 @@ build_prepare: archive
 srpm: build_prepare
 	/usr/bin/mock \
 		-r $(MOCK_CONFIG) \
+		$(MOCK_OPTIONS) \
 		--define "__version $(VERSION)" \
 		--define "__release $(BUILD_NUMBER)" \
+		--enable-network \
 		--resultdir=$(RESULT_DIR) \
+		--no-clean --no-cleanup-after \
+		--install epel-release \
 		--buildsrpm \
 		--spec=librdkafka.spec \
-		--sources=SOURCES
+		--sources=SOURCES || \
+	(tail -n 100 pkgs-$(VERSION)*/*log ; false)
 	@echo "======= Source RPM now available in $(RESULT_DIR) ======="
 
 rpm: srpm
 	/usr/bin/mock \
 		-r $(MOCK_CONFIG) \
+		$(MOCK_OPTIONS) \
 		--define "__version $(VERSION)"\
 		--define "__release $(BUILD_NUMBER)"\
+		--enable-network \
 		--resultdir=$(RESULT_DIR) \
-		--rebuild $(RESULT_DIR)/$(PACKAGE_NAME)*.src.rpm
+		--no-clean --no-cleanup-after \
+		--rebuild $(RESULT_DIR)/$(PACKAGE_NAME)*.src.rpm || \
+	(tail -n 100 pkgs-$(VERSION)*/*log ; false)
 	@echo "======= Binary RPMs now available in $(RESULT_DIR) ======="
+
+copy-artifacts:
+	cp $(RESULT_DIR)/*rpm $(ARTIFACTS_DIR)
 
 clean:
 	rm -rf SOURCES
+	/usr/bin/mock -r $(MOCK_CONFIG) --clean
 
 distclean: clean
 	rm -f build.log root.log state.log available_pkgs installed_pkgs \
 		*.rpm *.tar.gz
+
+# Prepare ubuntu 14.04 for building RPMs with mock.
+#  - older versions of mock needs the config file to reside in /etc/mock,
+#    so we copy it there.
+#  - add a mock system group (if not already exists)
+#  - add the current user to the mock group.
+#  - prepare mock environment with some needed packages.
+# NOTE: This target should be run with sudo.
+prepare_ubuntu:
+	apt-get -qq update
+	apt-get install -y -qq mock make git python-lzma
+	cp *.cfg /etc/mock/
+	addgroup --system mock || true
+	adduser $$(whoami) mock
+	/usr/bin/mock -r $(MOCK_CONFIG) --init
+	/usr/bin/mock -r $(MOCK_CONFIG) \
+		--enable-network \
+		--no-cleanup-after \
+		--install epel-release shadow-utils
+
+prepare_centos:
+	yum install -y -q mock make git
+	cp *.cfg /etc/mock/
