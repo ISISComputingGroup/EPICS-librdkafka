@@ -38,6 +38,7 @@ OPENSSL=$(SUPPORT)/OpenSSL/master
 ZLIB=$(SUPPORT)/zlib/master
 OPENSSL=$(SUPPORT)/OpenSSL/master
 LIBRDKAFKA=$(SUPPORT)/librdkafka/master
+CURL=$(SUPPORT)/curl/master
 
 # Set RULES here if you want to use build rules from somewhere
 # other than EPICS_BASE:
