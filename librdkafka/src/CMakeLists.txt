@@ -241,7 +241,6 @@ if(WITH_SASL_CYRUS)
   target_include_directories(rdkafka PRIVATE ${SASL_INCLUDE_DIRS})
   target_link_libraries(rdkafka PUBLIC ${SASL_LIBRARIES})
 endif()
-endif()
 
 if(WITH_LIBDL)
   target_link_libraries(rdkafka PUBLIC ${CMAKE_DL_LIBS})

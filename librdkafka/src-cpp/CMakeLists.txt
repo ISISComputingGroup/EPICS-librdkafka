@@ -15,6 +15,7 @@ set(
     TopicImpl.cpp
     TopicPartitionImpl.cpp
 )
+
 if(RDKAFKA_BUILD_STATIC)
   set(CMAKE_POSITION_INDEPENDENT_CODE ON)
   set(RDKAFKA_BUILD_MODE STATIC)
