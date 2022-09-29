@@ -1,4 +1,5 @@
-cmake_minimum_required(VERSION 3.2)
+cmake_minimum_required(VERSION 3.15)
+cmake_policy(SET CMP0091 NEW)
 
 include("packaging/cmake/parseversion.cmake")
 parseversion("src/rdkafka.h")
@@ -185,6 +186,9 @@ option(RDKAFKA_BUILD_TESTS "Build tests" ON)
 if(WIN32)
     option(WITHOUT_WIN32_CONFIG "Avoid including win32_config.h on cmake builds" ON)
 endif(WIN32)
+if(RDKAFKA_BUILD_STATIC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif(RDKAFKA_BUILD_STATIC)
 
 # In:
 # * TRYCOMPILE_SRC_DIR
