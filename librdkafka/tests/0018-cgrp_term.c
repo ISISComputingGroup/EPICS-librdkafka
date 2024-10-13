@@ -1,7 +1,7 @@
 /*
  * librdkafka - Apache Kafka C library
  *
- * Copyright (c) 2012-2015, Magnus Edenhill
+ * Copyright (c) 2012-2022, Magnus Edenhill
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -207,7 +207,7 @@ static void do_test(rd_bool_t with_queue) {
 
 
         test_conf_init(NULL, &default_topic_conf,
-                       5 + ((test_session_timeout_ms * 3) / 1000));
+                       5 + ((test_session_timeout_ms * 3 * 2) / 1000));
         if (rd_kafka_topic_conf_set(default_topic_conf, "auto.offset.reset",
                                     "smallest", errstr,
                                     sizeof(errstr)) != RD_KAFKA_CONF_OK)
@@ -260,7 +260,8 @@ static void do_test(rd_bool_t with_queue) {
         /* Let remaining consumers run for a while to take over the now
          * lost partitions. */
 
-        if (assign_cnt != _CONS_CNT - 1)
+        if (test_consumer_group_protocol_generic() &&
+            assign_cnt != _CONS_CNT - 1)
                 TEST_FAIL("assign_cnt %d, should be %d\n", assign_cnt,
                           _CONS_CNT - 1);
 

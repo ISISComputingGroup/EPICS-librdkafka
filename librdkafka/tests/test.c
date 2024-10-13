@@ -1,7 +1,8 @@
 /*
  * librdkafka - Apache Kafka C library
  *
- * Copyright (c) 2012-2013, Magnus Edenhill
+ * Copyright (c) 2012-2022, Magnus Edenhill
+ *               2023, Confluent Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -47,17 +48,18 @@
 int test_level = 2;
 int test_seed  = 0;
 
-char test_mode[64]                     = "bare";
-char test_scenario[64]                 = "default";
-static volatile sig_atomic_t test_exit = 0;
-static char test_topic_prefix[128]     = "rdkafkatest";
-static int test_topic_random           = 0;
-int tests_running_cnt                  = 0;
-int test_concurrent_max                = 5;
-int test_assert_on_fail                = 0;
-double test_timeout_multiplier         = 1.0;
-static char *test_sql_cmd              = NULL;
-int test_session_timeout_ms            = 6000;
+char test_mode[64]                                  = "bare";
+char test_scenario[64]                              = "default";
+static volatile sig_atomic_t test_exit              = 0;
+static char test_topic_prefix[128]                  = "rdkafkatest";
+static int test_topic_random                        = 0;
+int tests_running_cnt                               = 0;
+int test_concurrent_max                             = 5;
+int test_assert_on_fail                             = 0;
+double test_timeout_multiplier                      = 1.0;
+static char *test_sql_cmd                           = NULL;
+int test_session_timeout_ms                         = 6000;
+static const char *test_consumer_group_protocol_str = NULL;
 int test_broker_version;
 static const char *test_broker_version_str = "2.4.0.0";
 int test_flags                             = 0;
@@ -76,6 +78,7 @@ int test_rusage              = 0; /**< Check resource usage */
  *   <1.0: CPU is faster than base line system. */
 double test_rusage_cpu_calibration = 1.0;
 static const char *tests_to_run    = NULL; /* all */
+static const char *skip_tests_till = NULL; /* all */
 static const char *subtests_to_run = NULL; /* all */
 static const char *tests_to_skip   = NULL; /* none */
 int test_write_report              = 0;    /**< Write test report file */
@@ -132,6 +135,7 @@ _TEST_DECL(0028_long_topicnames);
 _TEST_DECL(0029_assign_offset);
 _TEST_DECL(0030_offset_commit);
 _TEST_DECL(0031_get_offsets);
+_TEST_DECL(0031_get_offsets_mock);
 _TEST_DECL(0033_regex_subscribe);
 _TEST_DECL(0033_regex_subscribe_local);
 _TEST_DECL(0034_offset_reset);
@@ -152,6 +156,7 @@ _TEST_DECL(0045_subscribe_update);
 _TEST_DECL(0045_subscribe_update_topic_remove);
 _TEST_DECL(0045_subscribe_update_non_exist_and_partchange);
 _TEST_DECL(0045_subscribe_update_mock);
+_TEST_DECL(0045_subscribe_update_racks_mock);
 _TEST_DECL(0046_rkt_cache);
 _TEST_DECL(0047_partial_buf_tmout);
 _TEST_DECL(0048_partitioner);
@@ -183,6 +188,7 @@ _TEST_DECL(0073_headers);
 _TEST_DECL(0074_producev);
 _TEST_DECL(0075_retry);
 _TEST_DECL(0076_produce_retry);
+_TEST_DECL(0076_produce_retry_mock);
 _TEST_DECL(0077_compaction);
 _TEST_DECL(0078_c_from_cpp);
 _TEST_DECL(0079_fork);
@@ -234,15 +240,32 @@ _TEST_DECL(0122_buffer_cleaning_after_rebalance);
 _TEST_DECL(0123_connections_max_idle);
 _TEST_DECL(0124_openssl_invalid_engine);
 _TEST_DECL(0125_immediate_flush);
+_TEST_DECL(0125_immediate_flush_mock);
 _TEST_DECL(0126_oauthbearer_oidc);
+_TEST_DECL(0127_fetch_queue_backoff);
 _TEST_DECL(0128_sasl_callback_queue);
 _TEST_DECL(0129_fetch_aborted_msgs);
 _TEST_DECL(0130_store_offsets);
 _TEST_DECL(0131_connect_timeout);
 _TEST_DECL(0132_strategy_ordering);
+_TEST_DECL(0133_ssl_keys);
+_TEST_DECL(0134_ssl_provider);
+_TEST_DECL(0135_sasl_credentials);
+_TEST_DECL(0136_resolve_cb);
+_TEST_DECL(0137_barrier_batch_consume);
+_TEST_DECL(0138_admin_mock);
+_TEST_DECL(0139_offset_validation_mock);
+_TEST_DECL(0140_commit_metadata);
+_TEST_DECL(0142_reauthentication);
+_TEST_DECL(0143_exponential_backoff_mock);
+_TEST_DECL(0144_idempotence_mock);
+_TEST_DECL(0145_pause_resume_mock);
+_TEST_DECL(0146_metadata_mock);
+_TEST_DECL(0150_telemetry_mock);
 
 /* Manual tests */
 _TEST_DECL(8000_idle);
+_TEST_DECL(8001_fetch_from_follower_mock_manual);
 
 
 /* Define test resource usage thresholds if the default limits
@@ -309,7 +332,7 @@ struct test tests[] = {
     _TEST(0028_long_topicnames,
           TEST_F_KNOWN_ISSUE,
           TEST_BRKVER(0, 9, 0, 0),
-          .extra = "https://github.com/edenhill/librdkafka/issues/529"),
+          .extra = "https://github.com/confluentinc/librdkafka/issues/529"),
     _TEST(0029_assign_offset, 0),
     _TEST(0030_offset_commit,
           0,
@@ -317,6 +340,7 @@ struct test tests[] = {
           /* Loops over committed() until timeout */
           _THRES(.ucpu = 10.0, .scpu = 5.0)),
     _TEST(0031_get_offsets, 0),
+    _TEST(0031_get_offsets_mock, TEST_F_LOCAL),
     _TEST(0033_regex_subscribe, 0, TEST_BRKVER(0, 9, 0, 0)),
     _TEST(0033_regex_subscribe_local, TEST_F_LOCAL),
     _TEST(0034_offset_reset, 0),
@@ -353,6 +377,7 @@ struct test tests[] = {
           TEST_BRKVER(0, 9, 0, 0),
           .scenario = "noautocreate"),
     _TEST(0045_subscribe_update_mock, TEST_F_LOCAL),
+    _TEST(0045_subscribe_update_racks_mock, TEST_F_LOCAL),
     _TEST(0046_rkt_cache, TEST_F_LOCAL),
     _TEST(0047_partial_buf_tmout, TEST_F_KNOWN_ISSUE),
     _TEST(0048_partitioner,
@@ -398,6 +423,7 @@ struct test tests[] = {
     _TEST(0075_retry, TEST_F_SOCKEM),
 #endif
     _TEST(0076_produce_retry, TEST_F_SOCKEM),
+    _TEST(0076_produce_retry_mock, TEST_F_LOCAL),
     _TEST(0077_compaction,
           0,
           /* The test itself requires message headers */
@@ -472,15 +498,33 @@ struct test tests[] = {
     _TEST(0123_connections_max_idle, 0),
     _TEST(0124_openssl_invalid_engine, TEST_F_LOCAL),
     _TEST(0125_immediate_flush, 0),
+    _TEST(0125_immediate_flush_mock, TEST_F_LOCAL),
     _TEST(0126_oauthbearer_oidc, 0, TEST_BRKVER(3, 1, 0, 0)),
+    _TEST(0127_fetch_queue_backoff, 0),
     _TEST(0128_sasl_callback_queue, TEST_F_LOCAL, TEST_BRKVER(2, 0, 0, 0)),
     _TEST(0129_fetch_aborted_msgs, 0, TEST_BRKVER(0, 11, 0, 0)),
     _TEST(0130_store_offsets, 0),
     _TEST(0131_connect_timeout, TEST_F_LOCAL),
     _TEST(0132_strategy_ordering, 0, TEST_BRKVER(2, 4, 0, 0)),
+    _TEST(0133_ssl_keys, TEST_F_LOCAL),
+    _TEST(0134_ssl_provider, TEST_F_LOCAL),
+    _TEST(0135_sasl_credentials, 0),
+    _TEST(0136_resolve_cb, TEST_F_LOCAL),
+    _TEST(0137_barrier_batch_consume, 0),
+    _TEST(0138_admin_mock, TEST_F_LOCAL, TEST_BRKVER(2, 4, 0, 0)),
+    _TEST(0139_offset_validation_mock, 0),
+    _TEST(0140_commit_metadata, 0),
+    _TEST(0142_reauthentication, 0, TEST_BRKVER(2, 2, 0, 0)),
+    _TEST(0143_exponential_backoff_mock, TEST_F_LOCAL),
+    _TEST(0144_idempotence_mock, TEST_F_LOCAL, TEST_BRKVER(0, 11, 0, 0)),
+    _TEST(0145_pause_resume_mock, TEST_F_LOCAL),
+    _TEST(0146_metadata_mock, TEST_F_LOCAL),
+    _TEST(0150_telemetry_mock, 0),
+
 
     /* Manual tests */
     _TEST(8000_idle, TEST_F_MANUAL),
+    _TEST(8001_fetch_from_follower_mock_manual, TEST_F_MANUAL),
 
     {NULL}};
 
@@ -728,6 +772,9 @@ static void test_init(void) {
                         exit(1);
                 }
         }
+        test_consumer_group_protocol_str =
+            test_getenv("TEST_CONSUMER_GROUP_PROTOCOL", NULL);
+
 
 #ifdef _WIN32
         test_init_win32();
@@ -1313,6 +1360,13 @@ static void run_tests(int argc, char **argv) {
                         skip_silent = rd_true;
                 } else if (tests_to_skip && strstr(tests_to_skip, testnum))
                         skip_reason = "included in TESTS_SKIP list";
+                else if (skip_tests_till) {
+                        if (!strcmp(skip_tests_till, testnum))
+                                skip_tests_till = NULL;
+                        else
+                                skip_reason =
+                                    "ignoring test before TESTS_SKIP_BEFORE";
+                }
 
                 if (!skip_reason) {
                         run_test(test, argc, argv);
@@ -1393,15 +1447,18 @@ static int test_summary(int do_lock) {
 #else
                 sql_fp = popen(test_sql_cmd, "w");
 #endif
-
-                fprintf(sql_fp,
-                        "CREATE TABLE IF NOT EXISTS "
-                        "runs(runid text PRIMARY KEY, mode text, "
-                        "date datetime, cnt int, passed int, failed int, "
-                        "duration numeric);\n"
-                        "CREATE TABLE IF NOT EXISTS "
-                        "tests(runid text, mode text, name text, state text, "
-                        "extra text, duration numeric);\n");
+                if (!sql_fp)
+                        TEST_WARN("Failed to execute test.sql.command: %s",
+                                  test_sql_cmd);
+                else
+                        fprintf(sql_fp,
+                                "CREATE TABLE IF NOT EXISTS "
+                                "runs(runid text PRIMARY KEY, mode text, "
+                                "date datetime, cnt int, passed int, "
+                                "failed int, duration numeric);\n"
+                                "CREATE TABLE IF NOT EXISTS "
+                                "tests(runid text, mode text, name text, "
+                                "state text, extra text, duration numeric);\n");
         }
 
         if (show_summary)
@@ -1635,6 +1692,8 @@ int main(int argc, char **argv) {
         subtests_to_run = test_getenv("SUBTESTS", NULL);
         tests_to_skip   = test_getenv("TESTS_SKIP", NULL);
         tmpver          = test_getenv("TEST_KAFKA_VERSION", NULL);
+        skip_tests_till = test_getenv("TESTS_SKIP_BEFORE", NULL);
+
         if (!tmpver)
                 tmpver = test_getenv("KAFKA_VERSION", test_broker_version_str);
         test_broker_version_str = tmpver;
@@ -1756,17 +1815,14 @@ int main(int argc, char **argv) {
 
         TEST_SAY("Git version: %s\n", test_git_version);
 
-        if (!strcmp(test_broker_version_str, "trunk"))
-                test_broker_version_str = "9.9.9.9"; /* for now */
-
         d = 0;
         if (sscanf(test_broker_version_str, "%d.%d.%d.%d", &a, &b, &c, &d) <
             3) {
-                printf(
-                    "%% Expected broker version to be in format "
-                    "N.N.N (N=int), not %s\n",
-                    test_broker_version_str);
-                exit(1);
+                TEST_SAY(
+                    "Non-numeric broker version, setting version"
+                    " to 9.9.9.9\n");
+                test_broker_version_str = "9.9.9.9";
+                sscanf(test_broker_version_str, "%d.%d.%d.%d", &a, &b, &c, &d);
         }
         test_broker_version = TEST_BRKVER(a, b, c, d);
         TEST_SAY("Broker version: %s (%d.%d.%d.%d)\n", test_broker_version_str,
@@ -1809,11 +1865,14 @@ int main(int argc, char **argv) {
         if (test_concurrent_max > 1)
                 test_timeout_multiplier += (double)test_concurrent_max / 3;
 
-        TEST_SAY("Tests to run : %s\n", tests_to_run ? tests_to_run : "all");
+        TEST_SAY("Tests to run     : %s\n",
+                 tests_to_run ? tests_to_run : "all");
         if (subtests_to_run)
-                TEST_SAY("Sub tests    : %s\n", subtests_to_run);
+                TEST_SAY("Sub tests        : %s\n", subtests_to_run);
         if (tests_to_skip)
-                TEST_SAY("Skip tests   : %s\n", tests_to_skip);
+                TEST_SAY("Skip tests       : %s\n", tests_to_skip);
+        if (skip_tests_till)
+                TEST_SAY("Skip tests before: %s\n", skip_tests_till);
         TEST_SAY("Test mode    : %s%s%s\n", test_quick ? "quick, " : "",
                  test_mode, test_on_ci ? ", CI" : "");
         TEST_SAY("Test scenario: %s\n", test_scenario);
@@ -1985,7 +2044,10 @@ rd_kafka_t *test_create_handle(int mode, rd_kafka_conf_t *conf) {
                         test_conf_set(conf, "client.id", test_curr->name);
         }
 
-
+        if (mode == RD_KAFKA_CONSUMER && test_consumer_group_protocol_str) {
+                test_conf_set(conf, "group.protocol",
+                              test_consumer_group_protocol_str);
+        }
 
         /* Creat kafka instance */
         rk = rd_kafka_new(mode, conf, errstr, sizeof(errstr));
@@ -2295,7 +2357,7 @@ void test_produce_msgs_rate(rd_kafka_t *rk,
 
 /**
  * Create producer, produce \p msgcnt messages to \p topic \p partition,
- * destroy consumer, and returns the used testid.
+ * destroy producer, and returns the used testid.
  */
 uint64_t test_produce_msgs_easy_size(const char *topic,
                                      uint64_t testid,
@@ -3572,6 +3634,38 @@ static int test_mv_mvec_verify_dup(test_msgver_t *mv,
         return fails;
 }
 
+/**
+ * @brief Verify that all messages are from the correct broker.
+ */
+static int test_mv_mvec_verify_broker(test_msgver_t *mv,
+                                      int flags,
+                                      struct test_mv_p *p,
+                                      struct test_mv_mvec *mvec,
+                                      struct test_mv_vs *vs) {
+        int mi;
+        int fails = 0;
+
+        /* Assume that the correct flag has been checked already. */
+
+
+        rd_assert(flags & TEST_MSGVER_BY_BROKER_ID);
+        for (mi = 0; mi < mvec->cnt; mi++) {
+                struct test_mv_m *this = test_mv_mvec_get(mvec, mi);
+                if (this->broker_id != vs->broker_id) {
+                        TEST_MV_WARN(
+                            mv,
+                            " %s [%" PRId32
+                            "] broker_id check: "
+                            "msgid #%d (at mi %d): "
+                            "broker_id %" PRId32
+                            " is not the expected broker_id %" PRId32 "\n",
+                            p ? p->topic : "*", p ? p->partition : -1,
+                            this->msgid, mi, this->broker_id, vs->broker_id);
+                        fails++;
+                }
+        }
+        return fails;
+}
 
 
 /**
@@ -3881,6 +3975,10 @@ int test_msgver_verify0(const char *func,
                 fails +=
                     test_mv_p_verify_f(mv, flags, test_mv_mvec_verify_dup, &vs);
 
+        if (flags & TEST_MSGVER_BY_BROKER_ID)
+                fails += test_mv_p_verify_f(mv, flags,
+                                            test_mv_mvec_verify_broker, &vs);
+
         /* Checks across all partitions */
         if ((flags & TEST_MSGVER_RANGE) && vs.exp_cnt > 0) {
                 vs.msgid_min = vs.msg_base;
@@ -4165,19 +4263,21 @@ int test_consumer_poll_once(rd_kafka_t *rk, test_msgver_t *mv, int timeout_ms) {
         return 1;
 }
 
-
 /**
  * @param exact Require exact exp_eof_cnt (unless -1) and exp_cnt (unless -1).
  *              If false: poll until either one is reached.
+ * @param timeout_ms Each call to poll has a timeout set by this argument. The
+ *                   test fails if any poll times out.
  */
-int test_consumer_poll_exact(const char *what,
-                             rd_kafka_t *rk,
-                             uint64_t testid,
-                             int exp_eof_cnt,
-                             int exp_msg_base,
-                             int exp_cnt,
-                             rd_bool_t exact,
-                             test_msgver_t *mv) {
+int test_consumer_poll_exact_timeout(const char *what,
+                                     rd_kafka_t *rk,
+                                     uint64_t testid,
+                                     int exp_eof_cnt,
+                                     int exp_msg_base,
+                                     int exp_cnt,
+                                     rd_bool_t exact,
+                                     test_msgver_t *mv,
+                                     int timeout_ms) {
         int eof_cnt = 0;
         int cnt     = 0;
         test_timing_t t_cons;
@@ -4192,7 +4292,8 @@ int test_consumer_poll_exact(const char *what,
                (exact && (eof_cnt < exp_eof_cnt || cnt < exp_cnt))) {
                 rd_kafka_message_t *rkmessage;
 
-                rkmessage = rd_kafka_consumer_poll(rk, tmout_multip(10 * 1000));
+                rkmessage =
+                    rd_kafka_consumer_poll(rk, tmout_multip(timeout_ms));
                 if (!rkmessage) /* Shouldn't take this long to get a msg */
                         TEST_FAIL(
                             "%s: consumer_poll() timeout "
@@ -4223,9 +4324,11 @@ int test_consumer_poll_exact(const char *what,
                         TEST_SAYL(4,
                                   "%s: consumed message on %s [%" PRId32
                                   "] "
-                                  "at offset %" PRId64 "\n",
+                                  "at offset %" PRId64 " (leader epoch %" PRId32
+                                  ")\n",
                                   what, rd_kafka_topic_name(rkmessage->rkt),
-                                  rkmessage->partition, rkmessage->offset);
+                                  rkmessage->partition, rkmessage->offset,
+                                  rd_kafka_message_leader_epoch(rkmessage));
 
                         if (!mv || test_msgver_add_msg(rk, mv, rkmessage))
                                 cnt++;
@@ -4254,6 +4357,23 @@ int test_consumer_poll_exact(const char *what,
 }
 
 
+/**
+ * @param exact Require exact exp_eof_cnt (unless -1) and exp_cnt (unless -1).
+ *              If false: poll until either one is reached.
+ */
+int test_consumer_poll_exact(const char *what,
+                             rd_kafka_t *rk,
+                             uint64_t testid,
+                             int exp_eof_cnt,
+                             int exp_msg_base,
+                             int exp_cnt,
+                             rd_bool_t exact,
+                             test_msgver_t *mv) {
+        return test_consumer_poll_exact_timeout(what, rk, testid, exp_eof_cnt,
+                                                exp_msg_base, exp_cnt, exact,
+                                                mv, 10 * 1000);
+}
+
 int test_consumer_poll(const char *what,
                        rd_kafka_t *rk,
                        uint64_t testid,
@@ -4264,6 +4384,19 @@ int test_consumer_poll(const char *what,
         return test_consumer_poll_exact(what, rk, testid, exp_eof_cnt,
                                         exp_msg_base, exp_cnt,
                                         rd_false /*not exact */, mv);
+}
+
+int test_consumer_poll_timeout(const char *what,
+                               rd_kafka_t *rk,
+                               uint64_t testid,
+                               int exp_eof_cnt,
+                               int exp_msg_base,
+                               int exp_cnt,
+                               test_msgver_t *mv,
+                               int timeout_ms) {
+        return test_consumer_poll_exact_timeout(
+            what, rk, testid, exp_eof_cnt, exp_msg_base, exp_cnt,
+            rd_false /*not exact */, mv, timeout_ms);
 }
 
 void test_consumer_close(rd_kafka_t *rk) {
@@ -4419,10 +4552,13 @@ void test_print_partition_list(
     const rd_kafka_topic_partition_list_t *partitions) {
         int i;
         for (i = 0; i < partitions->cnt; i++) {
-                TEST_SAY(" %s [%" PRId32 "] offset %" PRId64 "%s%s\n",
+                TEST_SAY(" %s [%" PRId32 "] offset %" PRId64 " (epoch %" PRId32
+                         ") %s%s\n",
                          partitions->elems[i].topic,
                          partitions->elems[i].partition,
                          partitions->elems[i].offset,
+                         rd_kafka_topic_partition_get_leader_epoch(
+                             &partitions->elems[i]),
                          partitions->elems[i].err ? ": " : "",
                          partitions->elems[i].err
                              ? rd_kafka_err2str(partitions->elems[i].err)
@@ -4459,6 +4595,37 @@ int test_partition_list_cmp(rd_kafka_topic_partition_list_t *al,
         return 0;
 }
 
+/**
+ * @brief Compare two lists and their offsets, returning 0 if equal.
+ *
+ * @remark The lists may be sorted by this function.
+ */
+int test_partition_list_and_offsets_cmp(rd_kafka_topic_partition_list_t *al,
+                                        rd_kafka_topic_partition_list_t *bl) {
+        int i;
+
+        if (al->cnt < bl->cnt)
+                return -1;
+        else if (al->cnt > bl->cnt)
+                return 1;
+        else if (al->cnt == 0)
+                return 0;
+
+        rd_kafka_topic_partition_list_sort(al, NULL, NULL);
+        rd_kafka_topic_partition_list_sort(bl, NULL, NULL);
+
+        for (i = 0; i < al->cnt; i++) {
+                const rd_kafka_topic_partition_t *a = &al->elems[i];
+                const rd_kafka_topic_partition_t *b = &bl->elems[i];
+                if (a->partition != b->partition ||
+                    strcmp(a->topic, b->topic) || a->offset != b->offset ||
+                    rd_kafka_topic_partition_get_leader_epoch(a) !=
+                        rd_kafka_topic_partition_get_leader_epoch(b))
+                        return -1;
+        }
+
+        return 0;
+}
 
 /**
  * @brief Execute script from the Kafka distribution bin/ path.
@@ -5334,6 +5501,92 @@ int32_t *test_get_broker_ids(rd_kafka_t *use_rk, size_t *cntp) {
         return ids;
 }
 
+/**
+ * @brief Get value of a config property from given broker id.
+ *
+ * @param rk Optional instance to use.
+ * @param broker_id Broker to query.
+ * @param key Entry key to query.
+ *
+ * @return an allocated char* which will be non-NULL if `key` is present
+ *         and there have been no errors.
+ */
+char *test_get_broker_config_entry(rd_kafka_t *use_rk,
+                                   int32_t broker_id,
+                                   const char *key) {
+        rd_kafka_t *rk;
+        char *entry_value = NULL;
+        char errstr[128];
+        rd_kafka_AdminOptions_t *options             = NULL;
+        rd_kafka_ConfigResource_t *config            = NULL;
+        rd_kafka_queue_t *queue                      = NULL;
+        const rd_kafka_DescribeConfigs_result_t *res = NULL;
+        size_t rconfig_cnt;
+        const rd_kafka_ConfigResource_t **rconfigs;
+        rd_kafka_resp_err_t err;
+        const rd_kafka_ConfigEntry_t **entries;
+        size_t entry_cnt;
+        size_t j;
+        rd_kafka_event_t *rkev;
+
+        if (!(rk = use_rk))
+                rk = test_create_producer();
+
+        queue = rd_kafka_queue_new(rk);
+
+        config = rd_kafka_ConfigResource_new(RD_KAFKA_RESOURCE_BROKER,
+                                             tsprintf("%" PRId32, broker_id));
+        options =
+            rd_kafka_AdminOptions_new(rk, RD_KAFKA_ADMIN_OP_DESCRIBECONFIGS);
+        err = rd_kafka_AdminOptions_set_request_timeout(options, 10000, errstr,
+                                                        sizeof(errstr));
+        TEST_ASSERT(!err, "%s", errstr);
+
+        rd_kafka_DescribeConfigs(rk, &config, 1, options, queue);
+        rd_kafka_ConfigResource_destroy(config);
+        rd_kafka_AdminOptions_destroy(options);
+
+        rkev = test_wait_admin_result(
+            queue, RD_KAFKA_EVENT_DESCRIBECONFIGS_RESULT, 10000);
+
+        res = rd_kafka_event_DescribeConfigs_result(rkev);
+        TEST_ASSERT(res, "expecting describe config results to be not NULL");
+
+        err = rd_kafka_event_error(rkev);
+        TEST_ASSERT(!err, "Expected success, not %s", rd_kafka_err2name(err));
+
+        rconfigs = rd_kafka_DescribeConfigs_result_resources(res, &rconfig_cnt);
+        TEST_ASSERT(rconfig_cnt == 1, "Expecting 1 resource, got %" PRIusz,
+                    rconfig_cnt);
+
+        err = rd_kafka_ConfigResource_error(rconfigs[0]);
+
+
+        entries = rd_kafka_ConfigResource_configs(rconfigs[0], &entry_cnt);
+
+        for (j = 0; j < entry_cnt; ++j) {
+                const rd_kafka_ConfigEntry_t *e = entries[j];
+                const char *cname               = rd_kafka_ConfigEntry_name(e);
+
+                if (!strcmp(cname, key)) {
+                        const char *val = rd_kafka_ConfigEntry_value(e);
+
+                        if (val) {
+                                entry_value = rd_strdup(val);
+                                break;
+                        }
+                }
+        }
+
+        rd_kafka_event_destroy(rkev);
+        rd_kafka_queue_destroy(queue);
+
+        if (!use_rk)
+                rd_kafka_destroy(rk);
+
+        return entry_value;
+}
+
 
 
 /**
@@ -5613,6 +5866,7 @@ rd_kafka_event_t *test_wait_admin_result(rd_kafka_queue_t *q,
  *
  *        Supported APIs:
  *        - AlterConfigs
+ *        - IncrementalAlterConfigs
  *        - CreatePartitions
  *        - CreateTopics
  *        - DeleteGroups
@@ -5636,9 +5890,15 @@ rd_kafka_resp_err_t test_wait_topic_admin_result(rd_kafka_queue_t *q,
         size_t aclres_cnt                      = 0;
         int errcnt                             = 0;
         rd_kafka_resp_err_t err;
-        const rd_kafka_group_result_t **gres           = NULL;
-        size_t gres_cnt                                = 0;
-        const rd_kafka_topic_partition_list_t *offsets = NULL;
+        const rd_kafka_group_result_t **gres                        = NULL;
+        size_t gres_cnt                                             = 0;
+        const rd_kafka_ConsumerGroupDescription_t **gdescs          = NULL;
+        size_t gdescs_cnt                                           = 0;
+        const rd_kafka_error_t **glists_errors                      = NULL;
+        size_t glists_error_cnt                                     = 0;
+        const rd_kafka_topic_partition_list_t *offsets              = NULL;
+        const rd_kafka_DeleteAcls_result_response_t **delete_aclres = NULL;
+        size_t delete_aclres_cnt                                    = 0;
 
         rkev = test_wait_admin_result(q, evtype, tmout);
 
@@ -5692,6 +5952,17 @@ rd_kafka_resp_err_t test_wait_topic_admin_result(rd_kafka_queue_t *q,
 
                 cres = rd_kafka_AlterConfigs_result_resources(res, &cres_cnt);
 
+        } else if (evtype == RD_KAFKA_EVENT_INCREMENTALALTERCONFIGS_RESULT) {
+                const rd_kafka_IncrementalAlterConfigs_result_t *res;
+
+                if (!(res =
+                          rd_kafka_event_IncrementalAlterConfigs_result(rkev)))
+                        TEST_FAIL(
+                            "Expected a IncrementalAlterConfigs result, not %s",
+                            rd_kafka_event_name(rkev));
+
+                cres = rd_kafka_IncrementalAlterConfigs_result_resources(
+                    res, &cres_cnt);
         } else if (evtype == RD_KAFKA_EVENT_CREATEACLS_RESULT) {
                 const rd_kafka_CreateAcls_result_t *res;
 
@@ -5700,7 +5971,33 @@ rd_kafka_resp_err_t test_wait_topic_admin_result(rd_kafka_queue_t *q,
                                   rd_kafka_event_name(rkev));
 
                 aclres = rd_kafka_CreateAcls_result_acls(res, &aclres_cnt);
+        } else if (evtype == RD_KAFKA_EVENT_DELETEACLS_RESULT) {
+                const rd_kafka_DeleteAcls_result_t *res;
 
+                if (!(res = rd_kafka_event_DeleteAcls_result(rkev)))
+                        TEST_FAIL("Expected a DeleteAcls result, not %s",
+                                  rd_kafka_event_name(rkev));
+
+                delete_aclres = rd_kafka_DeleteAcls_result_responses(
+                    res, &delete_aclres_cnt);
+        } else if (evtype == RD_KAFKA_EVENT_LISTCONSUMERGROUPS_RESULT) {
+                const rd_kafka_ListConsumerGroups_result_t *res;
+                if (!(res = rd_kafka_event_ListConsumerGroups_result(rkev)))
+                        TEST_FAIL(
+                            "Expected a ListConsumerGroups result, not %s",
+                            rd_kafka_event_name(rkev));
+
+                glists_errors = rd_kafka_ListConsumerGroups_result_errors(
+                    res, &glists_error_cnt);
+        } else if (evtype == RD_KAFKA_EVENT_DESCRIBECONSUMERGROUPS_RESULT) {
+                const rd_kafka_DescribeConsumerGroups_result_t *res;
+                if (!(res = rd_kafka_event_DescribeConsumerGroups_result(rkev)))
+                        TEST_FAIL(
+                            "Expected a DescribeConsumerGroups result, not %s",
+                            rd_kafka_event_name(rkev));
+
+                gdescs = rd_kafka_DescribeConsumerGroups_result_groups(
+                    res, &gdescs_cnt);
         } else if (evtype == RD_KAFKA_EVENT_DELETEGROUPS_RESULT) {
                 const rd_kafka_DeleteGroups_result_t *res;
                 if (!(res = rd_kafka_event_DeleteGroups_result(rkev)))
@@ -5771,6 +6068,30 @@ rd_kafka_resp_err_t test_wait_topic_admin_result(rd_kafka_queue_t *q,
                 }
         }
 
+        /* Check list groups errors */
+        for (i = 0; i < glists_error_cnt; i++) {
+                const rd_kafka_error_t *error = glists_errors[i];
+                TEST_WARN("%s error: %s\n", rd_kafka_event_name(rkev),
+                          rd_kafka_error_string(error));
+                if (!(errcnt++))
+                        err = rd_kafka_error_code(error);
+        }
+
+        /* Check describe groups errors */
+        for (i = 0; i < gdescs_cnt; i++) {
+                const rd_kafka_error_t *error;
+                if ((error =
+                         rd_kafka_ConsumerGroupDescription_error(gdescs[i]))) {
+                        TEST_WARN("%s result: %s: error: %s\n",
+                                  rd_kafka_event_name(rkev),
+                                  rd_kafka_ConsumerGroupDescription_group_id(
+                                      gdescs[i]),
+                                  rd_kafka_error_string(error));
+                        if (!(errcnt++))
+                                err = rd_kafka_error_code(error);
+                }
+        }
+
         /* Check group errors */
         for (i = 0; i < gres_cnt; i++) {
                 const rd_kafka_topic_partition_list_t *parts;
@@ -5816,6 +6137,20 @@ rd_kafka_resp_err_t test_wait_topic_admin_result(rd_kafka_queue_t *q,
                                   rd_kafka_err2str(offsets->elems[i].err));
                         if (!(errcnt++))
                                 err = offsets->elems[i].err;
+                }
+        }
+
+        /* Check delete ACL errors. */
+        for (i = 0; i < delete_aclres_cnt; i++) {
+                const rd_kafka_DeleteAcls_result_response_t *res_resp =
+                    delete_aclres[i];
+                const rd_kafka_error_t *error =
+                    rd_kafka_DeleteAcls_result_response_error(res_resp);
+                if (error) {
+                        TEST_WARN("DeleteAcls result error: %s\n",
+                                  rd_kafka_error_string(error));
+                        if ((errcnt++) == 0)
+                                err = rd_kafka_error_code(error);
                 }
         }
 
@@ -6006,7 +6341,7 @@ rd_kafka_resp_err_t test_DeleteTopics_simple(rd_kafka_t *rk,
 
         TEST_SAY("Deleting %" PRIusz " topics\n", topic_cnt);
 
-        rd_kafka_DeleteTopics(rk, del_topics, topic_cnt, options, useq);
+        rd_kafka_DeleteTopics(rk, del_topics, topic_cnt, options, q);
 
         rd_kafka_AdminOptions_destroy(options);
 
@@ -6064,7 +6399,7 @@ rd_kafka_resp_err_t test_DeleteGroups_simple(rd_kafka_t *rk,
 
         TEST_SAY("Deleting %" PRIusz " groups\n", group_cnt);
 
-        rd_kafka_DeleteGroups(rk, del_groups, group_cnt, options, useq);
+        rd_kafka_DeleteGroups(rk, del_groups, group_cnt, options, q);
 
         rd_kafka_AdminOptions_destroy(options);
 
@@ -6078,8 +6413,6 @@ rd_kafka_resp_err_t test_DeleteGroups_simple(rd_kafka_t *rk,
             q, RD_KAFKA_EVENT_DELETEGROUPS_RESULT, NULL, tmout + 5000);
 
         rd_kafka_queue_destroy(q);
-
-        rd_kafka_DeleteGroup_destroy_array(del_groups, group_cnt);
 
         if (err)
                 TEST_FAIL("Failed to delete groups: %s", rd_kafka_err2str(err));
@@ -6231,7 +6564,7 @@ rd_kafka_resp_err_t test_AlterConfigs_simple(rd_kafka_t *rk,
         size_t result_cnt;
         const rd_kafka_ConfigEntry_t **configents;
         size_t configent_cnt;
-
+        config_cnt = config_cnt * 2;
 
         q = rd_kafka_queue_new(rk);
 
@@ -6264,13 +6597,31 @@ rd_kafka_resp_err_t test_AlterConfigs_simple(rd_kafka_t *rk,
         /* Apply all existing configuration entries to resource object that
          * will later be passed to AlterConfigs. */
         for (i = 0; i < configent_cnt; i++) {
+                const char *entry_name =
+                    rd_kafka_ConfigEntry_name(configents[i]);
+
+                if (test_broker_version >= TEST_BRKVER(3, 2, 0, 0)) {
+                        /* Skip entries that are overwritten to
+                         * avoid duplicates, that cause an error since
+                         * this broker version. */
+                        size_t j;
+                        for (j = 0; j < config_cnt; j += 2) {
+                                if (!strcmp(configs[j], entry_name)) {
+                                        break;
+                                }
+                        }
+
+                        if (j < config_cnt)
+                                continue;
+                }
+
                 err = rd_kafka_ConfigResource_set_config(
-                    confres, rd_kafka_ConfigEntry_name(configents[i]),
+                    confres, entry_name,
                     rd_kafka_ConfigEntry_value(configents[i]));
                 TEST_ASSERT(!err,
                             "Failed to set read-back config %s=%s "
                             "on local resource object",
-                            rd_kafka_ConfigEntry_name(configents[i]),
+                            entry_name,
                             rd_kafka_ConfigEntry_value(configents[i]));
         }
 
@@ -6292,6 +6643,74 @@ rd_kafka_resp_err_t test_AlterConfigs_simple(rd_kafka_t *rk,
 
         err = test_wait_topic_admin_result(
             q, RD_KAFKA_EVENT_ALTERCONFIGS_RESULT, NULL, 15 * 1000);
+
+        rd_kafka_queue_destroy(q);
+
+        return err;
+}
+
+/**
+ * @brief Delta Incremental Alter configuration for the given resource,
+ *        overwriting/setting the configs provided in \p configs.
+ *        Existing configuration remains intact.
+ *
+ * @param configs 'const char *name, const char *op_type', const char *value'
+ * tuples
+ * @param config_cnt is the number of tuples in \p configs
+ */
+rd_kafka_resp_err_t
+test_IncrementalAlterConfigs_simple(rd_kafka_t *rk,
+                                    rd_kafka_ResourceType_t restype,
+                                    const char *resname,
+                                    const char **configs,
+                                    size_t config_cnt) {
+        rd_kafka_queue_t *q;
+        rd_kafka_ConfigResource_t *confres;
+        size_t i;
+        rd_kafka_resp_err_t err;
+        rd_kafka_error_t *error;
+
+
+        TEST_SAY("Incrementally altering configuration for %d %s\n", restype,
+                 resname);
+
+        q          = rd_kafka_queue_new(rk);
+        confres    = rd_kafka_ConfigResource_new(restype, resname);
+        config_cnt = config_cnt * 3;
+
+        /* Apply the configuration to change. */
+        for (i = 0; i < config_cnt; i += 3) {
+                const char *confname  = configs[i];
+                const char *op_string = configs[i + 1];
+                const char *confvalue = configs[i + 2];
+                rd_kafka_AlterConfigOpType_t op_type =
+                    RD_KAFKA_ALTER_CONFIG_OP_TYPE__CNT;
+
+                if (!strcmp(op_string, "SET"))
+                        op_type = RD_KAFKA_ALTER_CONFIG_OP_TYPE_SET;
+                else if (!strcmp(op_string, "DELETE"))
+                        op_type = RD_KAFKA_ALTER_CONFIG_OP_TYPE_DELETE;
+                else if (!strcmp(op_string, "APPEND"))
+                        op_type = RD_KAFKA_ALTER_CONFIG_OP_TYPE_APPEND;
+                else if (!strcmp(op_string, "SUBTRACT"))
+                        op_type = RD_KAFKA_ALTER_CONFIG_OP_TYPE_SUBTRACT;
+                else
+                        TEST_FAIL("Unknown op type %s\n", op_string);
+
+                error = rd_kafka_ConfigResource_add_incremental_config(
+                    confres, confname, op_type, confvalue);
+                TEST_ASSERT(!error,
+                            "Failed to set incremental %s config %s=%s on "
+                            "local resource object",
+                            op_string, confname, confvalue);
+        }
+
+        rd_kafka_IncrementalAlterConfigs(rk, &confres, 1, NULL, q);
+
+        rd_kafka_ConfigResource_destroy(confres);
+
+        err = test_wait_topic_admin_result(
+            q, RD_KAFKA_EVENT_INCREMENTALALTERCONFIGS_RESULT, NULL, 15 * 1000);
 
         rd_kafka_queue_destroy(q);
 
@@ -6344,6 +6763,56 @@ rd_kafka_resp_err_t test_CreateAcls_simple(rd_kafka_t *rk,
         if (err)
                 TEST_FAIL("Failed to create %d acl(s): %s", (int)acl_cnt,
                           rd_kafka_err2str(err));
+
+        return err;
+}
+
+/**
+ * @brief Topic Admin API helpers
+ *
+ * @param useq Makes the call async and posts the response in this queue.
+ *             If NULL this call will be synchronous and return the error
+ *             result.
+ *
+ * @remark Fails the current test on failure.
+ */
+
+rd_kafka_resp_err_t
+test_DeleteAcls_simple(rd_kafka_t *rk,
+                       rd_kafka_queue_t *useq,
+                       rd_kafka_AclBindingFilter_t **acl_filters,
+                       size_t acl_filters_cnt,
+                       void *opaque) {
+        rd_kafka_AdminOptions_t *options;
+        rd_kafka_queue_t *q;
+        rd_kafka_resp_err_t err;
+        const int tmout = 30 * 1000;
+
+        options = rd_kafka_AdminOptions_new(rk, RD_KAFKA_ADMIN_OP_DELETEACLS);
+        rd_kafka_AdminOptions_set_opaque(options, opaque);
+
+        if (!useq) {
+                q = rd_kafka_queue_new(rk);
+        } else {
+                q = useq;
+        }
+
+        TEST_SAY("Deleting acls using %" PRIusz " filters\n", acl_filters_cnt);
+
+        rd_kafka_DeleteAcls(rk, acl_filters, acl_filters_cnt, options, q);
+
+        rd_kafka_AdminOptions_destroy(options);
+
+        if (useq)
+                return RD_KAFKA_RESP_ERR_NO_ERROR;
+
+        err = test_wait_topic_admin_result(q, RD_KAFKA_EVENT_DELETEACLS_RESULT,
+                                           NULL, tmout + 5000);
+
+        rd_kafka_queue_destroy(q);
+
+        if (err)
+                TEST_FAIL("Failed to delete acl(s): %s", rd_kafka_err2str(err));
 
         return err;
 }
@@ -6670,7 +7139,63 @@ rd_kafka_mock_cluster_t *test_mock_cluster_new(int broker_cnt,
         return mcluster;
 }
 
+/**
+ * @brief Get current number of matching requests,
+ *        received by mock cluster \p mcluster, matching
+ *        function \p match , called with opaque \p opaque .
+ */
+static size_t test_mock_get_matching_request_cnt(
+    rd_kafka_mock_cluster_t *mcluster,
+    rd_bool_t (*match)(rd_kafka_mock_request_t *request, void *opaque),
+    void *opaque) {
+        size_t i;
+        size_t request_cnt;
+        rd_kafka_mock_request_t **requests;
+        size_t matching_request_cnt = 0;
 
+        requests = rd_kafka_mock_get_requests(mcluster, &request_cnt);
+
+        for (i = 0; i < request_cnt; i++) {
+                if (match(requests[i], opaque))
+                        matching_request_cnt++;
+        }
+
+        rd_kafka_mock_request_destroy_array(requests, request_cnt);
+        return matching_request_cnt;
+}
+
+/**
+ * @brief Wait that at least \p expected_cnt matching requests
+ *        have been received by the mock cluster,
+ *        using match function \p match ,
+ *        plus \p confidence_interval_ms has passed
+ *
+ * @param expected_cnt Number of expected matching request
+ * @param confidence_interval_ms Time to wait after \p expected_cnt matching
+ *                               requests have been seen
+ * @param match Match function that takes a request and \p opaque
+ * @param opaque Opaque value needed by function \p match
+ *
+ * @return Number of matching requests received.
+ */
+size_t test_mock_wait_matching_requests(
+    rd_kafka_mock_cluster_t *mcluster,
+    size_t expected_cnt,
+    int confidence_interval_ms,
+    rd_bool_t (*match)(rd_kafka_mock_request_t *request, void *opaque),
+    void *opaque) {
+        size_t matching_request_cnt = 0;
+
+        while (matching_request_cnt < expected_cnt) {
+                matching_request_cnt =
+                    test_mock_get_matching_request_cnt(mcluster, match, opaque);
+                if (matching_request_cnt < expected_cnt)
+                        rd_usleep(100 * 1000, 0);
+        }
+
+        rd_usleep(confidence_interval_ms * 1000, 0);
+        return test_mock_get_matching_request_cnt(mcluster, match, opaque);
+}
 
 /**
  * @name Sub-tests
@@ -6712,6 +7237,8 @@ int test_sub_start(const char *func,
                 return 0;
         }
 
+        test_curr->subtest_quick = is_quick;
+
         TIMING_START(&test_curr->subtest_duration, "SUBTEST");
 
         TEST_SAY(_C_MAG "[ %s ]\n", test_curr->subtest);
@@ -6744,6 +7271,16 @@ void test_sub_pass(void) {
                   (float)(TIMING_DURATION(&test_curr->subtest_duration) /
                           1000000.0f));
 
+        if (test_curr->subtest_quick && test_quick && !test_on_ci &&
+            TIMING_DURATION(&test_curr->subtest_duration) > 45 * 1000 * 1000)
+                TEST_WARN(
+                    "Subtest %s marked as QUICK but took %.02fs to "
+                    "finish: either fix the test or "
+                    "remove the _QUICK identifier (limit is 45s)\n",
+                    test_curr->subtest,
+                    (float)(TIMING_DURATION(&test_curr->subtest_duration) /
+                            1000000.0f));
+
         test_sub_reset();
 }
 
@@ -6764,4 +7301,18 @@ void test_sub_skip(const char *fmt, ...) {
         TEST_SAYL(1, _C_YEL "[ %s: SKIP: %s ]\n", test_curr->subtest, buf);
 
         test_sub_reset();
+}
+
+const char *test_consumer_group_protocol() {
+        return test_consumer_group_protocol_str;
+}
+
+int test_consumer_group_protocol_generic() {
+        return !test_consumer_group_protocol_str ||
+               !strcmp(test_consumer_group_protocol_str, "classic");
+}
+
+int test_consumer_group_protocol_consumer() {
+        return test_consumer_group_protocol_str &&
+               !strcmp(test_consumer_group_protocol_str, "consumer");
 }

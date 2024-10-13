@@ -1,7 +1,8 @@
 /*
  * librdkafka - Apache Kafka C library
  *
- * Copyright (c) 2012-2015, Magnus Edenhill
+ * Copyright (c) 2012-2022, Magnus Edenhill
+ *               2023, Confluent Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -79,14 +80,25 @@ const char *rd_kafka_op2str(rd_kafka_op_type_t type) {
             [RD_KAFKA_OP_DELETETOPICS]     = "REPLY:DELETETOPICS",
             [RD_KAFKA_OP_CREATEPARTITIONS] = "REPLY:CREATEPARTITIONS",
             [RD_KAFKA_OP_ALTERCONFIGS]     = "REPLY:ALTERCONFIGS",
-            [RD_KAFKA_OP_DESCRIBECONFIGS]  = "REPLY:DESCRIBECONFIGS",
-            [RD_KAFKA_OP_DELETERECORDS]    = "REPLY:DELETERECORDS",
-            [RD_KAFKA_OP_DELETEGROUPS]     = "REPLY:DELETEGROUPS",
+            [RD_KAFKA_OP_INCREMENTALALTERCONFIGS] =
+                "REPLY:INCREMENTALALTERCONFIGS",
+            [RD_KAFKA_OP_DESCRIBECONFIGS]    = "REPLY:DESCRIBECONFIGS",
+            [RD_KAFKA_OP_DELETERECORDS]      = "REPLY:DELETERECORDS",
+            [RD_KAFKA_OP_LISTCONSUMERGROUPS] = "REPLY:LISTCONSUMERGROUPS",
+            [RD_KAFKA_OP_DESCRIBECONSUMERGROUPS] =
+                "REPLY:DESCRIBECONSUMERGROUPS",
+            [RD_KAFKA_OP_DESCRIBETOPICS]  = "REPLY:DESCRIBETOPICS",
+            [RD_KAFKA_OP_DESCRIBECLUSTER] = "REPLY:DESCRIBECLUSTER",
+            [RD_KAFKA_OP_DELETEGROUPS]    = "REPLY:DELETEGROUPS",
             [RD_KAFKA_OP_DELETECONSUMERGROUPOFFSETS] =
                 "REPLY:DELETECONSUMERGROUPOFFSETS",
-            [RD_KAFKA_OP_CREATEACLS]          = "REPLY:CREATEACLS",
-            [RD_KAFKA_OP_DESCRIBEACLS]        = "REPLY:DESCRIBEACLS",
-            [RD_KAFKA_OP_DELETEACLS]          = "REPLY:DELETEACLS",
+            [RD_KAFKA_OP_CREATEACLS]   = "REPLY:CREATEACLS",
+            [RD_KAFKA_OP_DESCRIBEACLS] = "REPLY:DESCRIBEACLS",
+            [RD_KAFKA_OP_DELETEACLS]   = "REPLY:DELETEACLS",
+            [RD_KAFKA_OP_ALTERCONSUMERGROUPOFFSETS] =
+                "REPLY:ALTERCONSUMERGROUPOFFSETS",
+            [RD_KAFKA_OP_LISTCONSUMERGROUPOFFSETS] =
+                "REPLY:LISTCONSUMERGROUPOFFSETS",
             [RD_KAFKA_OP_ADMIN_FANOUT]        = "REPLY:ADMIN_FANOUT",
             [RD_KAFKA_OP_ADMIN_RESULT]        = "REPLY:ADMIN_RESULT",
             [RD_KAFKA_OP_PURGE]               = "REPLY:PURGE",
@@ -97,8 +109,20 @@ const char *rd_kafka_op2str(rd_kafka_op_type_t type) {
             [RD_KAFKA_OP_TXN]                 = "REPLY:TXN",
             [RD_KAFKA_OP_GET_REBALANCE_PROTOCOL] =
                 "REPLY:GET_REBALANCE_PROTOCOL",
-            [RD_KAFKA_OP_LEADERS] = "REPLY:LEADERS",
-            [RD_KAFKA_OP_BARRIER] = "REPLY:BARRIER",
+            [RD_KAFKA_OP_LEADERS]     = "REPLY:LEADERS",
+            [RD_KAFKA_OP_BARRIER]     = "REPLY:BARRIER",
+            [RD_KAFKA_OP_SASL_REAUTH] = "REPLY:SASL_REAUTH",
+            [RD_KAFKA_OP_ALTERUSERSCRAMCREDENTIALS] =
+                "REPLY:ALTERUSERSCRAMCREDENTIALS",
+            [RD_KAFKA_OP_DESCRIBEUSERSCRAMCREDENTIALS] =
+                "REPLY:DESCRIBEUSERSCRAMCREDENTIALS",
+            [RD_KAFKA_OP_LISTOFFSETS]     = "REPLY:LISTOFFSETS",
+            [RD_KAFKA_OP_METADATA_UPDATE] = "REPLY:METADATA_UPDATE",
+            [RD_KAFKA_OP_SET_TELEMETRY_BROKER] =
+                "REPLY:RD_KAFKA_OP_SET_TELEMETRY_BROKER",
+            [RD_KAFKA_OP_TERMINATE_TELEMETRY] =
+                "REPLY:RD_KAFKA_OP_TERMINATE_TELEMETRY",
+            [RD_KAFKA_OP_ELECTLEADERS] = "REPLY:ELECTLEADERS",
         };
 
         if (type & RD_KAFKA_OP_REPLY)
@@ -221,14 +245,25 @@ rd_kafka_op_t *rd_kafka_op_new0(const char *source, rd_kafka_op_type_t type) {
             [RD_KAFKA_OP_DELETETOPICS]     = sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_CREATEPARTITIONS] = sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_ALTERCONFIGS]     = sizeof(rko->rko_u.admin_request),
-            [RD_KAFKA_OP_DESCRIBECONFIGS]  = sizeof(rko->rko_u.admin_request),
-            [RD_KAFKA_OP_DELETERECORDS]    = sizeof(rko->rko_u.admin_request),
-            [RD_KAFKA_OP_DELETEGROUPS]     = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_INCREMENTALALTERCONFIGS] =
+                sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DESCRIBECONFIGS]    = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DELETERECORDS]      = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_LISTCONSUMERGROUPS] = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DESCRIBECONSUMERGROUPS] =
+                sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DESCRIBETOPICS]  = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DESCRIBECLUSTER] = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DELETEGROUPS]    = sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_DELETECONSUMERGROUPOFFSETS] =
                 sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_CREATEACLS]   = sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_DESCRIBEACLS] = sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_DELETEACLS]   = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_ALTERCONSUMERGROUPOFFSETS] =
+                sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_LISTCONSUMERGROUPOFFSETS] =
+                sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_ADMIN_FANOUT] = sizeof(rko->rko_u.admin_request),
             [RD_KAFKA_OP_ADMIN_RESULT] = sizeof(rko->rko_u.admin_result),
             [RD_KAFKA_OP_PURGE]        = sizeof(rko->rko_u.purge),
@@ -239,8 +274,19 @@ rd_kafka_op_t *rd_kafka_op_new0(const char *source, rd_kafka_op_type_t type) {
             [RD_KAFKA_OP_TXN]            = sizeof(rko->rko_u.txn),
             [RD_KAFKA_OP_GET_REBALANCE_PROTOCOL] =
                 sizeof(rko->rko_u.rebalance_protocol),
-            [RD_KAFKA_OP_LEADERS] = sizeof(rko->rko_u.leaders),
-            [RD_KAFKA_OP_BARRIER] = _RD_KAFKA_OP_EMPTY,
+            [RD_KAFKA_OP_LEADERS]     = sizeof(rko->rko_u.leaders),
+            [RD_KAFKA_OP_BARRIER]     = _RD_KAFKA_OP_EMPTY,
+            [RD_KAFKA_OP_SASL_REAUTH] = _RD_KAFKA_OP_EMPTY,
+            [RD_KAFKA_OP_ALTERUSERSCRAMCREDENTIALS] =
+                sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_DESCRIBEUSERSCRAMCREDENTIALS] =
+                sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_LISTOFFSETS]     = sizeof(rko->rko_u.admin_request),
+            [RD_KAFKA_OP_METADATA_UPDATE] = sizeof(rko->rko_u.metadata),
+            [RD_KAFKA_OP_SET_TELEMETRY_BROKER] =
+                sizeof(rko->rko_u.telemetry_broker),
+            [RD_KAFKA_OP_TERMINATE_TELEMETRY] = _RD_KAFKA_OP_EMPTY,
+            [RD_KAFKA_OP_ELECTLEADERS] = sizeof(rko->rko_u.admin_request),
         };
         size_t tsize = op2size[type & ~RD_KAFKA_OP_FLAGMASK];
 
@@ -352,6 +398,8 @@ void rd_kafka_op_destroy(rd_kafka_op_t *rko) {
 
                 if (rko->rko_u.dr.rkt)
                         rd_kafka_topic_destroy0(rko->rko_u.dr.rkt);
+                if (rko->rko_u.dr.presult)
+                        rd_kafka_Produce_result_destroy(rko->rko_u.dr.presult);
                 break;
 
         case RD_KAFKA_OP_OFFSET_RESET:
@@ -360,6 +408,8 @@ void rd_kafka_op_destroy(rd_kafka_op_t *rko) {
 
         case RD_KAFKA_OP_METADATA:
                 RD_IF_FREE(rko->rko_u.metadata.md, rd_kafka_metadata_destroy);
+                /* It's not needed to free metadata.mdi because they
+                   are the in the same memory allocation. */
                 break;
 
         case RD_KAFKA_OP_LOG:
@@ -373,15 +423,36 @@ void rd_kafka_op_destroy(rd_kafka_op_t *rko) {
         case RD_KAFKA_OP_DELETETOPICS:
         case RD_KAFKA_OP_CREATEPARTITIONS:
         case RD_KAFKA_OP_ALTERCONFIGS:
+        case RD_KAFKA_OP_INCREMENTALALTERCONFIGS:
         case RD_KAFKA_OP_DESCRIBECONFIGS:
         case RD_KAFKA_OP_DELETERECORDS:
+        case RD_KAFKA_OP_LISTCONSUMERGROUPS:
+        case RD_KAFKA_OP_DESCRIBECONSUMERGROUPS:
         case RD_KAFKA_OP_DELETEGROUPS:
         case RD_KAFKA_OP_DELETECONSUMERGROUPOFFSETS:
         case RD_KAFKA_OP_CREATEACLS:
         case RD_KAFKA_OP_DESCRIBEACLS:
         case RD_KAFKA_OP_DELETEACLS:
+        case RD_KAFKA_OP_ALTERCONSUMERGROUPOFFSETS:
+        case RD_KAFKA_OP_DESCRIBETOPICS:
+        case RD_KAFKA_OP_DESCRIBECLUSTER:
+        case RD_KAFKA_OP_LISTCONSUMERGROUPOFFSETS:
+        case RD_KAFKA_OP_ALTERUSERSCRAMCREDENTIALS:
+        case RD_KAFKA_OP_DESCRIBEUSERSCRAMCREDENTIALS:
+        case RD_KAFKA_OP_LISTOFFSETS:
+        case RD_KAFKA_OP_ELECTLEADERS:
                 rd_kafka_replyq_destroy(&rko->rko_u.admin_request.replyq);
                 rd_list_destroy(&rko->rko_u.admin_request.args);
+                if (rko->rko_u.admin_request.options.match_consumer_group_states
+                        .u.PTR) {
+                        rd_list_destroy(rko->rko_u.admin_request.options
+                                            .match_consumer_group_states.u.PTR);
+                }
+                if (rko->rko_u.admin_request.options.match_consumer_group_types
+                        .u.PTR) {
+                        rd_list_destroy(rko->rko_u.admin_request.options
+                                            .match_consumer_group_types.u.PTR);
+                }
                 rd_assert(!rko->rko_u.admin_request.fanout_parent);
                 RD_IF_FREE(rko->rko_u.admin_request.coordkey, rd_free);
                 break;
@@ -397,6 +468,12 @@ void rd_kafka_op_destroy(rd_kafka_op_t *rko) {
         case RD_KAFKA_OP_MOCK:
                 RD_IF_FREE(rko->rko_u.mock.name, rd_free);
                 RD_IF_FREE(rko->rko_u.mock.str, rd_free);
+                if (rko->rko_u.mock.metrics) {
+                        int64_t i;
+                        for (i = 0; i < rko->rko_u.mock.hi; i++)
+                                rd_free(rko->rko_u.mock.metrics[i]);
+                        rd_free(rko->rko_u.mock.metrics);
+                }
                 break;
 
         case RD_KAFKA_OP_BROKER_MONITOR:
@@ -417,6 +494,17 @@ void rd_kafka_op_destroy(rd_kafka_op_t *rko) {
                 RD_IF_FREE(rko->rko_u.leaders.leaders, rd_list_destroy);
                 RD_IF_FREE(rko->rko_u.leaders.partitions,
                            rd_kafka_topic_partition_list_destroy);
+                break;
+
+        case RD_KAFKA_OP_METADATA_UPDATE:
+                RD_IF_FREE(rko->rko_u.metadata.md, rd_kafka_metadata_destroy);
+                /* It's not needed to free metadata.mdi because they
+                   are the in the same memory allocation. */
+                break;
+
+        case RD_KAFKA_OP_SET_TELEMETRY_BROKER:
+                RD_IF_FREE(rko->rko_u.telemetry_broker.rkb,
+                           rd_kafka_broker_destroy);
                 break;
 
         default:
@@ -704,11 +792,11 @@ rd_kafka_op_call(rd_kafka_t *rk, rd_kafka_q_t *rkq, rd_kafka_op_t *rko) {
 rd_kafka_op_t *rd_kafka_op_new_ctrl_msg(rd_kafka_toppar_t *rktp,
                                         int32_t version,
                                         rd_kafka_buf_t *rkbuf,
-                                        int64_t offset) {
+                                        rd_kafka_fetch_pos_t pos) {
         rd_kafka_msg_t *rkm;
         rd_kafka_op_t *rko;
 
-        rko = rd_kafka_op_new_fetch_msg(&rkm, rktp, version, rkbuf, offset, 0,
+        rko = rd_kafka_op_new_fetch_msg(&rkm, rktp, version, rkbuf, pos, 0,
                                         NULL, 0, NULL);
 
         rkm->rkm_flags |= RD_KAFKA_MSG_F_CONTROL;
@@ -727,7 +815,7 @@ rd_kafka_op_t *rd_kafka_op_new_fetch_msg(rd_kafka_msg_t **rkmp,
                                          rd_kafka_toppar_t *rktp,
                                          int32_t version,
                                          rd_kafka_buf_t *rkbuf,
-                                         int64_t offset,
+                                         rd_kafka_fetch_pos_t pos,
                                          size_t key_len,
                                          const void *key,
                                          size_t val_len,
@@ -749,7 +837,8 @@ rd_kafka_op_t *rd_kafka_op_new_fetch_msg(rd_kafka_msg_t **rkmp,
         rko->rko_u.fetch.rkbuf = rkbuf;
         rd_kafka_buf_keep(rkbuf);
 
-        rkm->rkm_offset = offset;
+        rkm->rkm_offset                  = pos.offset;
+        rkm->rkm_u.consumer.leader_epoch = pos.leader_epoch;
 
         rkm->rkm_key     = (void *)key;
         rkm->rkm_key_len = key_len;
@@ -776,8 +865,11 @@ void rd_kafka_op_throttle_time(rd_kafka_broker_t *rkb,
                                int throttle_time) {
         rd_kafka_op_t *rko;
 
-        if (unlikely(throttle_time > 0))
+        if (unlikely(throttle_time > 0)) {
                 rd_avg_add(&rkb->rkb_avg_throttle, throttle_time);
+                rd_avg_add(&rkb->rkb_telemetry.rd_avg_current.rkb_avg_throttle,
+                           throttle_time);
+        }
 
         /* We send throttle events when:
          *  - throttle_time > 0
@@ -888,7 +980,7 @@ rd_kafka_op_res_t rd_kafka_op_handle(rd_kafka_t *rk,
  */
 void rd_kafka_fetch_op_app_prepare(rd_kafka_t *rk, rd_kafka_op_t *rko) {
         rd_kafka_toppar_t *rktp;
-        int64_t offset;
+        rd_kafka_fetch_pos_t pos;
 
         if (unlikely(rko->rko_type != RD_KAFKA_OP_FETCH || rko->rko_err))
                 return;
@@ -898,13 +990,8 @@ void rd_kafka_fetch_op_app_prepare(rd_kafka_t *rk, rd_kafka_op_t *rko) {
         if (unlikely(!rk))
                 rk = rktp->rktp_rkt->rkt_rk;
 
-        offset = rko->rko_u.fetch.rkm.rkm_rkmessage.offset + 1;
+        pos.offset       = rko->rko_u.fetch.rkm.rkm_rkmessage.offset + 1;
+        pos.leader_epoch = rko->rko_u.fetch.rkm.rkm_u.consumer.leader_epoch;
 
-        rd_kafka_toppar_lock(rktp);
-        rktp->rktp_app_offset = offset;
-        if (rk->rk_conf.enable_auto_offset_store)
-                rd_kafka_offset_store0(rktp, offset,
-                                       /* force: ignore assignment state */
-                                       rd_true, RD_DONT_LOCK);
-        rd_kafka_toppar_unlock(rktp);
+        rd_kafka_update_app_pos(rk, rktp, pos, RD_DO_LOCK);
 }
