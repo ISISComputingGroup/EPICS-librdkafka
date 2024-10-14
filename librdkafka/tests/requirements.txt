@@ -1,2 +1,2 @@
-trivup
+trivup/trivup-0.12.4.tar.gz
 jsoncomment
