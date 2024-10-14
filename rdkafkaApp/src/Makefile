@@ -65,6 +65,8 @@ install:
 	-$(CP) -f $(INSTALL_DIR)/lib/*.* $(TOP)/lib/$(EPICS_HOST_ARCH)/
 	-$(CP) -f $(INSTALL_DIR)/lib64/*.* $(TOP)/lib/$(EPICS_HOST_ARCH)/
 	-$(CP) -f $(INSTALL_DIR)/bin/* $(TOP)/bin/$(EPICS_HOST_ARCH)/
+	-$(CP) -f src/$(CMAKE_CONFIG)/*.pdb $(TOP)/bin/$(EPICS_HOST_ARCH)/
+	-$(CP) -f src-cpp/$(CMAKE_CONFIG)/*.pdb $(TOP)/bin/$(EPICS_HOST_ARCH)/
 endif
 
 uninstall:
