@@ -139,16 +139,16 @@ class LibrdkafkaTestApp(App):
             # Some tests need fine-grained access to various cert files,
             # set up the env vars accordingly.
             for k, v in ssl.ca.items():
-                self.env_add('RDK_SSL_ca_{}'.format(k), v)
+                self.env_add('SSL_ca_{}'.format(k), v)
 
             # Set envs for all generated keys so tests can find them.
             for k, v in key.items():
                 if isinstance(v, dict):
                     for k2, v2 in v.items():
-                        # E.g. "RDK_SSL_priv_der=path/to/librdkafka-priv.der"
-                        self.env_add('RDK_SSL_{}_{}'.format(k, k2), v2)
+                        # E.g. "SSL_priv_der=path/to/librdkafka-priv.der"
+                        self.env_add('SSL_{}_{}'.format(k, k2), v2)
                 else:
-                    self.env_add('RDK_SSL_{}'.format(k), v)
+                    self.env_add('SSL_{}'.format(k), v)
 
             if 'SASL' in self.security_protocol:
                 self.security_protocol = 'SASL_SSL'
@@ -191,7 +191,7 @@ class LibrdkafkaTestApp(App):
             if tests is not None:
                 self.env_add('TESTS', ','.join(tests))
 
-    def start_cmd(self):
+    def finalize_env(self):
         self.env_add(
             'KAFKA_PATH',
             self.cluster.get_all(
@@ -199,19 +199,23 @@ class LibrdkafkaTestApp(App):
                 '',
                 KafkaBrokerApp)[0],
             False)
-        self.env_add(
-            'ZK_ADDRESS',
-            self.cluster.get_all(
-                'address',
-                '',
-                ZookeeperApp)[0],
-            False)
+
+        zookeeper = self.cluster.get_all(
+            'address',
+            '',
+            ZookeeperApp)
+        if len(zookeeper):
+            self.env_add(
+                'ZK_ADDRESS',
+                zookeeper[0],
+                False)
         self.env_add('BROKERS', self.cluster.bootstrap_servers(), False)
 
         # Provide a HTTPS REST endpoint for the HTTP client tests.
         self.env_add(
             'RD_UT_HTTP_URL',
-            'https://jsonplaceholder.typicode.com/users')
+            'https://jsonplaceholder.typicode.com/users',
+            False)
 
         # Per broker env vars
         for b in [x for x in self.cluster.apps if isinstance(
@@ -219,14 +223,20 @@ class LibrdkafkaTestApp(App):
             self.env_add('BROKER_ADDRESS_%d' % b.appid,
                          ','.join([x for x in
                                    b.conf['listeners'].split(',')
-                                   if x.startswith(self.security_protocol)]))
+                                   if x.startswith(self.security_protocol)]),
+                         False)
             # Add each broker pid as an env so they can be killed
             # indivdidually.
-            self.env_add('BROKER_PID_%d' % b.appid, str(b.proc.pid))
+            self.env_add('BROKER_PID_%d' % b.appid, str(b.proc.pid), False)
             # JMX port, if available
             jmx_port = b.conf.get('jmx_port', None)
             if jmx_port is not None:
-                self.env_add('BROKER_JMX_PORT_%d' % b.appid, str(jmx_port))
+                self.env_add(
+                    'BROKER_JMX_PORT_%d' %
+                    b.appid, str(jmx_port), False)
+
+    def start_cmd(self):
+        self.finalize_env()
 
         extra_args = list()
         if not self.local_tests:

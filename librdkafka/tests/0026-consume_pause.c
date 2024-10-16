@@ -1,7 +1,7 @@
 /*
  * librdkafka - Apache Kafka C library
  *
- * Copyright (c) 2012-2015, Magnus Edenhill
+ * Copyright (c) 2012-2022, Magnus Edenhill
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -63,6 +63,8 @@ static void consume_pause(void) {
         test_topic_conf_set(tconf, "auto.offset.reset", "smallest");
 
         test_create_topic(NULL, topic, partition_cnt, 1);
+
+        test_wait_topic_exists(NULL, topic, 10 * 1000);
 
         /* Produce messages */
         testid =
@@ -260,6 +262,8 @@ static void consume_pause_resume_after_reassign(void) {
 
         test_create_topic(NULL, topic, (int)partition + 1, 1);
 
+        test_wait_topic_exists(NULL, topic, 10 * 1000);
+
         /* Produce messages */
         testid = test_produce_msgs_easy(topic, 0, partition, msgcnt);
 
@@ -417,6 +421,8 @@ static void consume_subscribe_assign_pause_resume(void) {
 
         test_create_topic(NULL, topic, (int)partition + 1, 1);
 
+        test_wait_topic_exists(NULL, topic, 10 * 1000);
+
         /* Produce messages */
         testid = test_produce_msgs_easy(topic, 0, partition, msgcnt);
 
@@ -468,6 +474,8 @@ static void consume_seek_pause_resume(void) {
 
         test_create_topic(NULL, topic, (int)partition + 1, 1);
 
+        test_wait_topic_exists(NULL, topic, 10 * 1000);
+
         /* Produce messages */
         testid = test_produce_msgs_easy(topic, 0, partition, msgcnt);
 
@@ -484,6 +492,8 @@ static void consume_seek_pause_resume(void) {
 
         TEST_SAY("Assigning partition\n");
         TEST_CALL_ERR__(rd_kafka_assign(rk, parts));
+
+        rd_kafka_topic_partition_list_destroy(parts);
 
 
         TEST_SAY("Consuming messages 0..100\n");

@@ -1,7 +1,8 @@
 /*
  * librdkafka - Apache Kafka C library
  *
- * Copyright (c) 2019, Magnus Edenhill
+ * Copyright (c) 2019-2022, Magnus Edenhill
+ *               2023, Confluent Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -304,7 +305,7 @@ void do_test_consumer_producer_txn(void) {
         const char *c1_groupid = input_topic;
         const char *c2_groupid = output_topic;
         rd_kafka_t *p1, *p2, *c1, *c2;
-        rd_kafka_conf_t *conf, *tmpconf, *c1_conf;
+        rd_kafka_conf_t *conf, *tmpconf;
         uint64_t testid;
 #define _MSGCNT (10 * 30)
         const int txncnt = 10;
@@ -364,8 +365,7 @@ void do_test_consumer_producer_txn(void) {
         test_conf_set(tmpconf, "isolation.level", "read_committed");
         test_conf_set(tmpconf, "auto.offset.reset", "earliest");
         test_conf_set(tmpconf, "enable.auto.commit", "false");
-        c1_conf = rd_kafka_conf_dup(tmpconf);
-        c1      = test_create_consumer(c1_groupid, NULL, tmpconf, NULL);
+        c1 = test_create_consumer(c1_groupid, NULL, tmpconf, NULL);
         test_consumer_subscribe(c1, input_topic);
 
         /* Create Producer 2 */
@@ -382,8 +382,6 @@ void do_test_consumer_producer_txn(void) {
         c2 = test_create_consumer(c2_groupid, NULL, tmpconf, NULL);
         test_consumer_subscribe(c2, output_topic);
 
-        rd_kafka_conf_destroy(conf);
-
         /* Keep track of what messages to expect on the output topic */
         test_msgver_init(&expect_mv, testid);
 
@@ -391,9 +389,11 @@ void do_test_consumer_producer_txn(void) {
                 int msgcnt2 = 10 * (1 + (txn % 3));
                 rd_kafka_message_t *msgs[_MSGCNT];
                 int i;
-                rd_bool_t do_abort          = !(txn % 3);
-                rd_bool_t recreate_consumer = do_abort && txn == 3;
-                rd_kafka_topic_partition_list_t *offsets;
+                rd_bool_t do_abort = !(txn % 3);
+                rd_bool_t recreate_consumer =
+                    (do_abort && txn == 3) || (!do_abort && txn == 2);
+                rd_kafka_topic_partition_list_t *offsets,
+                    *expected_offsets = NULL;
                 rd_kafka_resp_err_t err;
                 rd_kafka_consumer_group_metadata_t *c1_cgmetadata;
                 int remains = msgcnt2;
@@ -452,6 +452,28 @@ void do_test_consumer_producer_txn(void) {
                 TEST_CALL_ERROR__(rd_kafka_send_offsets_to_transaction(
                     p2, offsets, c1_cgmetadata, -1));
 
+                if (recreate_consumer && !do_abort) {
+                        expected_offsets =
+                            rd_kafka_topic_partition_list_new(offsets->cnt);
+
+                        /* Cannot use rd_kafka_topic_partition_list_copy
+                         * as it needs to be destroyed before closing the
+                         * consumer, because of the _private field holding
+                         * a reference to the internal toppar */
+                        for (i = 0; i < offsets->cnt; i++) {
+                                rd_kafka_topic_partition_t *rktpar =
+                                    &offsets->elems[i];
+                                rd_kafka_topic_partition_t *rktpar_new;
+                                rktpar_new = rd_kafka_topic_partition_list_add(
+                                    expected_offsets, rktpar->topic,
+                                    rktpar->partition);
+                                rktpar_new->offset = rktpar->offset;
+                                rd_kafka_topic_partition_set_leader_epoch(
+                                    rktpar_new,
+                                    rd_kafka_topic_partition_get_leader_epoch(
+                                        rktpar));
+                        }
+                }
 
                 rd_kafka_consumer_group_metadata_destroy(c1_cgmetadata);
 
@@ -481,11 +503,56 @@ void do_test_consumer_producer_txn(void) {
                         rd_kafka_consumer_close(c1);
                         rd_kafka_destroy(c1);
 
-                        c1 = test_create_consumer(c1_groupid, NULL, c1_conf,
+                        tmpconf = rd_kafka_conf_dup(conf);
+                        test_conf_set(tmpconf, "isolation.level",
+                                      "read_committed");
+                        test_conf_set(tmpconf, "auto.offset.reset", "earliest");
+                        test_conf_set(tmpconf, "enable.auto.commit", "false");
+                        c1 = test_create_consumer(c1_groupid, NULL, tmpconf,
                                                   NULL);
                         test_consumer_subscribe(c1, input_topic);
+
+
+                        if (expected_offsets) {
+                                rd_kafka_topic_partition_list_t
+                                    *committed_offsets =
+                                        rd_kafka_topic_partition_list_copy(
+                                            expected_offsets);
+                                /* Set committed offsets and epochs to a
+                                 * different value before requesting them. */
+                                for (i = 0; i < committed_offsets->cnt; i++) {
+                                        rd_kafka_topic_partition_t *rktpar =
+                                            &committed_offsets->elems[i];
+                                        rktpar->offset = -100;
+                                        rd_kafka_topic_partition_set_leader_epoch(
+                                            rktpar, -100);
+                                }
+
+                                TEST_CALL_ERR__(rd_kafka_committed(
+                                    c1, committed_offsets, -1));
+
+                                if (test_partition_list_and_offsets_cmp(
+                                        expected_offsets, committed_offsets)) {
+                                        TEST_SAY("expected list:\n");
+                                        test_print_partition_list(
+                                            expected_offsets);
+                                        TEST_SAY("committed() list:\n");
+                                        test_print_partition_list(
+                                            committed_offsets);
+                                        TEST_FAIL(
+                                            "committed offsets don't match");
+                                }
+
+                                rd_kafka_topic_partition_list_destroy(
+                                    committed_offsets);
+
+                                rd_kafka_topic_partition_list_destroy(
+                                    expected_offsets);
+                        }
                 }
         }
+
+        rd_kafka_conf_destroy(conf);
 
         test_msgver_init(&actual_mv, testid);
 
@@ -635,13 +702,16 @@ static void do_test_misuse_txn(void) {
                 error = rd_kafka_begin_transaction(p);
                 TEST_ASSERT(error, "Expected begin_transactions() to fail");
                 TEST_ASSERT(rd_kafka_error_code(error) ==
-                                RD_KAFKA_RESP_ERR__STATE,
+                                RD_KAFKA_RESP_ERR__CONFLICT,
                             "Expected begin_transactions() to fail "
-                            "with STATE, not %s",
+                            "with CONFLICT, not %s",
                             rd_kafka_error_name(error));
 
                 rd_kafka_error_destroy(error);
         }
+
+        TEST_ASSERT(i <= 5000,
+                    "init_transactions() did not succeed after %d calls\n", i);
 
         TEST_SAY("init_transactions() succeeded after %d call(s)\n", i + 1);
 
@@ -1033,6 +1103,90 @@ static void do_test_empty_txn(rd_bool_t send_offsets, rd_bool_t do_commit) {
         SUB_TEST_PASS();
 }
 
+
+/**
+ * @brief A control message should increase stored offset and
+ *        that stored offset should have correct leader epoch
+ *        and be included in commit.
+ *        See #4384.
+ */
+static void do_test_txn_abort_control_message_leader_epoch(void) {
+        const char *topic = test_mk_topic_name(__FUNCTION__, 1);
+
+        rd_kafka_t *p, *c;
+        rd_kafka_conf_t *p_conf, *c_conf;
+        test_msgver_t mv;
+        int exp_msg_cnt = 0;
+        uint64_t testid = test_id_generate();
+        rd_kafka_topic_partition_list_t *offsets;
+        int r;
+
+        SUB_TEST_QUICK();
+
+        test_conf_init(&p_conf, NULL, 30);
+        c_conf = rd_kafka_conf_dup(p_conf);
+
+        test_conf_set(p_conf, "transactional.id", topic);
+        rd_kafka_conf_set_dr_msg_cb(p_conf, test_dr_msg_cb);
+        p = test_create_handle(RD_KAFKA_PRODUCER, p_conf);
+
+        test_create_topic(p, topic, 1, 3);
+
+        TEST_CALL_ERROR__(rd_kafka_init_transactions(p, 5000));
+
+        TEST_CALL_ERROR__(rd_kafka_begin_transaction(p));
+
+        /* Produce one message */
+        test_produce_msgs2(p, topic, testid, RD_KAFKA_PARTITION_UA, 0, 1, NULL,
+                           0);
+
+        /* Abort the transaction */
+        TEST_CALL_ERROR__(rd_kafka_abort_transaction(p, -1));
+
+        /**
+         * Create consumer.
+         */
+        test_conf_set(c_conf, "enable.auto.commit", "false");
+        test_conf_set(c_conf, "group.id", topic);
+        test_conf_set(c_conf, "enable.partition.eof", "true");
+        test_conf_set(c_conf, "auto.offset.reset", "earliest");
+        test_msgver_init(&mv, testid);
+        c = test_create_consumer(topic, NULL, c_conf, NULL);
+
+
+        test_consumer_subscribe(c, topic);
+        /* Expect 0 messages and 1 EOF */
+        r = test_consumer_poll("consume.nothing", c, testid,
+                               /* exp_eof_cnt */ 1,
+                               /* exp_msg_base */ 0, exp_msg_cnt, &mv);
+        test_msgver_clear(&mv);
+
+        TEST_ASSERT(r == exp_msg_cnt, "expected %d messages, got %d",
+                    exp_msg_cnt, r);
+
+        /* Commits offset 2 (1 aborted message + 1 control message) */
+        TEST_CALL_ERR__(rd_kafka_commit(c, NULL, rd_false));
+
+        offsets = rd_kafka_topic_partition_list_new(1);
+        rd_kafka_topic_partition_list_add(offsets, topic, 0);
+        rd_kafka_committed(c, offsets, -1);
+
+        /* Committed offset must be 2 */
+        TEST_ASSERT(offsets->cnt == 1, "expected 1 partition, got %d",
+                    offsets->cnt);
+        TEST_ASSERT(offsets->elems[0].offset == 2,
+                    "expected offset 2, got %" PRId64,
+                    offsets->elems[0].offset);
+
+        /* All done */
+        test_consumer_close(c);
+        rd_kafka_topic_partition_list_destroy(offsets);
+        rd_kafka_destroy(c);
+        rd_kafka_destroy(p);
+
+        SUB_TEST_PASS();
+}
+
 /**
  * @returns the high watermark for the given partition.
  */
@@ -1150,6 +1304,7 @@ int main_0103_transactions(int argc, char **argv) {
         do_test_empty_txn(rd_true /*send offsets*/, rd_true /*commit*/);
         do_test_empty_txn(rd_true /*send offsets*/, rd_false /*abort*/);
         do_test_wmark_isolation_level();
+        do_test_txn_abort_control_message_leader_epoch();
         return 0;
 }
 

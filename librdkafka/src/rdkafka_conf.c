@@ -1,7 +1,8 @@
 /*
  * librdkafka - Apache Kafka C library
  *
- * Copyright (c) 2012,2013 Magnus Edenhill
+ * Copyright (c) 2012-2022, Magnus Edenhill
+ *               2023 Confluent Inc.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -89,7 +90,7 @@ struct rd_kafka_property {
                 const char *str;
                 const char *unsupported; /**< Reason for value not being
                                           *   supported in this build. */
-        } s2i[20];                       /* _RK_C_S2I and _RK_C_S2F */
+        } s2i[21];                       /* _RK_C_S2I and _RK_C_S2F */
 
         const char *unsupported; /**< Reason for propery not being supported
                                   *   in this build.
@@ -147,6 +148,20 @@ struct rd_kafka_property {
 #else
 #define _UNSUPPORTED_OPENSSL_1_1_0                                             \
         .unsupported = "OpenSSL >= 1.1.0 not available at build time"
+#endif
+
+#if WITH_SSL_ENGINE
+#define _UNSUPPORTED_SSL_ENGINE .unsupported = NULL
+#else
+#define _UNSUPPORTED_SSL_ENGINE                                                \
+        .unsupported = "OpenSSL >= 1.1.x not available at build time"
+#endif
+
+#if OPENSSL_VERSION_NUMBER >= 0x30000000 && defined(WITH_SSL)
+#define _UNSUPPORTED_SSL_3 .unsupported = NULL
+#else
+#define _UNSUPPORTED_SSL_3                                                     \
+        .unsupported = "OpenSSL >= 3.0.0 not available at build time"
 #endif
 
 
@@ -443,10 +458,12 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
     {_RK_GLOBAL, "topic.metadata.refresh.fast.interval.ms", _RK_C_INT,
      _RK(metadata_refresh_fast_interval_ms),
      "When a topic loses its leader a new metadata request will be "
-     "enqueued with this initial interval, exponentially increasing "
+     "enqueued immediately and then with this initial interval, exponentially "
+     "increasing upto `retry.backoff.max.ms`, "
      "until the topic metadata has been refreshed. "
+     "If not set explicitly, it will be defaulted to `retry.backoff.ms`. "
      "This is used to recover quickly from transitioning leader brokers.",
-     1, 60 * 1000, 250},
+     1, 60 * 1000, 100},
     {_RK_GLOBAL | _RK_DEPRECATED, "topic.metadata.refresh.fast.cnt", _RK_C_INT,
      _RK(metadata_refresh_fast_cnt), "No longer used.", 0, 1000, 10},
     {_RK_GLOBAL, "topic.metadata.refresh.sparse", _RK_C_BOOL,
@@ -494,6 +511,7 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
              {RD_KAFKA_DBG_MOCK, "mock"},
              {RD_KAFKA_DBG_ASSIGNOR, "assignor"},
              {RD_KAFKA_DBG_CONF, "conf"},
+             {RD_KAFKA_DBG_TELEMETRY, "telemetry"},
              {RD_KAFKA_DBG_ALL, "all"}}},
     {_RK_GLOBAL, "socket.timeout.ms", _RK_C_INT, _RK(socket_timeout_ms),
      "Default timeout for network requests. "
@@ -669,6 +687,8 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
           rd_kafka_open_cb_generic
 #endif
     },
+    {_RK_GLOBAL, "resolve_cb", _RK_C_PTR, _RK(resolve_cb),
+     "Address resolution callback (set with rd_kafka_conf_set_resolve_cb())."},
     {_RK_GLOBAL, "opaque", _RK_C_PTR, _RK(opaque),
      "Application opaque (set with rd_kafka_conf_set_opaque())"},
     {_RK_GLOBAL, "default_topic_conf", _RK_C_PTR, _RK(topic_conf),
@@ -718,6 +738,20 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "Any other value >= 0.10, such as 0.10.2.1, "
      "enables ApiVersionRequests.",
      .sdef = "0.10.0", .validate = rd_kafka_conf_validate_broker_version},
+    {_RK_GLOBAL, "allow.auto.create.topics", _RK_C_BOOL,
+     _RK(allow_auto_create_topics),
+     "Allow automatic topic creation on the broker when subscribing to "
+     "or assigning non-existent topics. "
+     "The broker must also be configured with "
+     "`auto.create.topics.enable=true` for this configuration to "
+     "take effect. "
+     "Note: the default value (true) for the producer is "
+     "different from the default value (false) for the consumer. "
+     "Further, the consumer default value is different from the Java "
+     "consumer (true), and this property is not supported by the Java "
+     "producer. Requires broker version >= 0.11.0.0, for older broker "
+     "versions only the broker configuration applies.",
+     0, 1, 0},
 
     /* Security related global properties */
     {_RK_GLOBAL | _RK_HIGH, "security.protocol", _RK_C_S2I,
@@ -821,17 +855,24 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
     {_RK_GLOBAL | _RK_SENSITIVE, "ssl.keystore.password", _RK_C_STR,
      _RK(ssl.keystore_password), "Client's keystore (PKCS#12) password.",
      _UNSUPPORTED_SSL},
-    {_RK_GLOBAL, "ssl.engine.location", _RK_C_STR, _RK(ssl.engine_location),
-     "Path to OpenSSL engine library. OpenSSL >= 1.1.0 required.",
-     _UNSUPPORTED_OPENSSL_1_1_0},
+    {_RK_GLOBAL, "ssl.providers", _RK_C_STR, _RK(ssl.providers),
+     "Comma-separated list of OpenSSL 3.0.x implementation providers. "
+     "E.g., \"default,legacy\".",
+     _UNSUPPORTED_SSL_3},
+    {_RK_GLOBAL | _RK_DEPRECATED, "ssl.engine.location", _RK_C_STR,
+     _RK(ssl.engine_location),
+     "Path to OpenSSL engine library. OpenSSL >= 1.1.x required. "
+     "DEPRECATED: OpenSSL engine support is deprecated and should be "
+     "replaced by OpenSSL 3 providers.",
+     _UNSUPPORTED_SSL_ENGINE},
     {_RK_GLOBAL, "ssl.engine.id", _RK_C_STR, _RK(ssl.engine_id),
      "OpenSSL engine id is the name used for loading engine.",
-     .sdef = "dynamic", _UNSUPPORTED_OPENSSL_1_1_0},
+     .sdef = "dynamic", _UNSUPPORTED_SSL_ENGINE},
     {_RK_GLOBAL, "ssl_engine_callback_data", _RK_C_PTR,
      _RK(ssl.engine_callback_data),
      "OpenSSL engine callback data (set "
      "with rd_kafka_conf_set_engine_callback_data()).",
-     _UNSUPPORTED_OPENSSL_1_1_0},
+     _UNSUPPORTED_SSL_ENGINE},
     {_RK_GLOBAL, "enable.ssl.certificate.verification", _RK_C_BOOL,
      _RK(ssl.enable_verify),
      "Enable OpenSSL's builtin broker (server) certificate verification. "
@@ -846,7 +887,7 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "specified in RFC2818. "
      "none - No endpoint verification. "
      "OpenSSL >= 1.0.2 required.",
-     .vdef = RD_KAFKA_SSL_ENDPOINT_ID_NONE,
+     .vdef = RD_KAFKA_SSL_ENDPOINT_ID_HTTPS,
      .s2i  = {{RD_KAFKA_SSL_ENDPOINT_ID_NONE, "none"},
              {RD_KAFKA_SSL_ENDPOINT_ID_HTTPS, "https"}},
      _UNSUPPORTED_OPENSSL_1_0_2},
@@ -860,11 +901,13 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "Java TrustStores are not supported, use `ssl.ca.location` "
      "and a certificate file instead. "
      "See "
-     "https://github.com/edenhill/librdkafka/wiki/Using-SSL-with-librdkafka "
+     "https://github.com/confluentinc/librdkafka/"
+     "wiki/Using-SSL-with-librdkafka "
      "for more information."},
     {_RK_GLOBAL, "sasl.jaas.config", _RK_C_INVALID, _RK(dummy),
      "Java JAAS configuration is not supported, see "
-     "https://github.com/edenhill/librdkafka/wiki/Using-SASL-with-librdkafka "
+     "https://github.com/confluentinc/librdkafka/"
+     "wiki/Using-SASL-with-librdkafka "
      "for more information."},
 
     {_RK_GLOBAL | _RK_HIGH, "sasl.mechanisms", _RK_C_STR, _RK(sasl.mechanisms),
@@ -1090,9 +1133,26 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "Group session keepalive heartbeat interval.", 1, 3600 * 1000, 3 * 1000},
     {_RK_GLOBAL | _RK_CGRP, "group.protocol.type", _RK_C_KSTR,
      _RK(group_protocol_type),
-     "Group protocol type. NOTE: Currently, the only supported group "
+     "Group protocol type for the `classic` group protocol. NOTE: Currently, "
+     "the only supported group "
      "protocol type is `consumer`.",
      .sdef = "consumer"},
+    {_RK_GLOBAL | _RK_CGRP | _RK_HIGH, "group.protocol", _RK_C_S2I,
+     _RK(group_protocol),
+     "Group protocol to use. Use `classic` for the original protocol and "
+     "`consumer` for the new "
+     "protocol introduced in KIP-848. Available protocols: classic or "
+     "consumer. Default is `classic`, "
+     "but will change to `consumer` in next releases.",
+     .vdef = RD_KAFKA_GROUP_PROTOCOL_CLASSIC,
+     .s2i  = {{RD_KAFKA_GROUP_PROTOCOL_CLASSIC, "classic"},
+             {RD_KAFKA_GROUP_PROTOCOL_CONSUMER, "consumer"}}},
+    {_RK_GLOBAL | _RK_CGRP | _RK_MED, "group.remote.assignor", _RK_C_STR,
+     _RK(group_remote_assignor),
+     "Server side assignor to use. Keep it null to make server select a "
+     "suitable assignor for the group. "
+     "Available assignors: uniform or range. Default is null",
+     .sdef = NULL},
     {_RK_GLOBAL | _RK_CGRP, "coordinator.query.interval.ms", _RK_C_INT,
      _RK(coord_query_intvl_ms),
      "How often to query for the current client group coordinator. "
@@ -1160,6 +1220,16 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "Maximum time the broker may wait to fill the Fetch response "
      "with fetch.min.bytes of messages.",
      0, 300 * 1000, 500},
+    {_RK_GLOBAL | _RK_CONSUMER | _RK_MED, "fetch.queue.backoff.ms", _RK_C_INT,
+     _RK(fetch_queue_backoff_ms),
+     "How long to postpone the next fetch request for a "
+     "topic+partition in case the current fetch queue thresholds "
+     "(queued.min.messages or queued.max.messages.kbytes) have "
+     "been exceded. "
+     "This property may need to be decreased if the queue thresholds are "
+     "set low and the application is experiencing long (~1s) delays "
+     "between messages. Low values may increase CPU utilization.",
+     0, 300 * 1000, 1000},
     {_RK_GLOBAL | _RK_CONSUMER | _RK_MED, "fetch.message.max.bytes", _RK_C_INT,
      _RK(fetch_msg_max_bytes),
      "Initial maximum number of bytes per topic+partition to request when "
@@ -1233,18 +1303,6 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "on-disk corruption to the messages occurred. This check comes "
      "at slightly increased CPU usage.",
      0, 1, 0},
-    {_RK_GLOBAL | _RK_CONSUMER, "allow.auto.create.topics", _RK_C_BOOL,
-     _RK(allow_auto_create_topics),
-     "Allow automatic topic creation on the broker when subscribing to "
-     "or assigning non-existent topics. "
-     "The broker must also be configured with "
-     "`auto.create.topics.enable=true` for this configuraiton to "
-     "take effect. "
-     "Note: The default value (false) is different from the "
-     "Java consumer (true). "
-     "Requires broker version >= 0.11.0.0, for older broker versions "
-     "only the broker configuration applies.",
-     0, 1, 0},
     {_RK_GLOBAL, "client.rack", _RK_C_KSTR, _RK(client_rack),
      "A rack identifier for this client. This can be any string value "
      "which indicates where this client is physically located. It "
@@ -1307,8 +1365,9 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
     {_RK_GLOBAL | _RK_PRODUCER | _RK_HIGH, "queue.buffering.max.messages",
      _RK_C_INT, _RK(queue_buffering_max_msgs),
      "Maximum number of messages allowed on the producer queue. "
-     "This queue is shared by all topics and partitions.",
-     1, 10000000, 100000},
+     "This queue is shared by all topics and partitions. A value of 0 disables "
+     "this limit.",
+     0, INT_MAX, 100000},
     {_RK_GLOBAL | _RK_PRODUCER | _RK_HIGH, "queue.buffering.max.kbytes",
      _RK_C_INT, _RK(queue_buffering_max_kbytes),
      "Maximum total message size sum allowed on the producer queue. "
@@ -1334,10 +1393,20 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      0, INT32_MAX, INT32_MAX},
     {_RK_GLOBAL | _RK_PRODUCER, "retries", _RK_C_ALIAS,
      .sdef = "message.send.max.retries"},
-    {_RK_GLOBAL | _RK_PRODUCER | _RK_MED, "retry.backoff.ms", _RK_C_INT,
-     _RK(retry_backoff_ms),
-     "The backoff time in milliseconds before retrying a protocol request.", 1,
-     300 * 1000, 100},
+
+    {_RK_GLOBAL | _RK_MED, "retry.backoff.ms", _RK_C_INT, _RK(retry_backoff_ms),
+     "The backoff time in milliseconds before retrying a protocol request, "
+     "this is the first backoff time, "
+     "and will be backed off exponentially until number of retries is "
+     "exhausted, and it's capped by retry.backoff.max.ms.",
+     1, 300 * 1000, 100},
+
+    {_RK_GLOBAL | _RK_MED, "retry.backoff.max.ms", _RK_C_INT,
+     _RK(retry_backoff_max_ms),
+     "The max backoff time in milliseconds before retrying a protocol request, "
+     "this is the atmost backoff allowed for exponentially backed off "
+     "requests.",
+     1, 300 * 1000, 1000},
 
     {_RK_GLOBAL | _RK_PRODUCER, "queue.buffering.backpressure.threshold",
      _RK_C_INT, _RK(queue_backpressure_thres),
@@ -1401,6 +1470,28 @@ static const struct rd_kafka_property rd_kafka_properties[] = {
      "A higher value allows for more effective batching of these "
      "messages.",
      0, 900000, 10},
+    {_RK_GLOBAL, "client.dns.lookup", _RK_C_S2I, _RK(client_dns_lookup),
+     "Controls how the client uses DNS lookups. By default, when the lookup "
+     "returns multiple IP addresses for a hostname, they will all be attempted "
+     "for connection before the connection is considered failed. This applies "
+     "to both bootstrap and advertised servers. If the value is set to "
+     "`resolve_canonical_bootstrap_servers_only`, each entry will be resolved "
+     "and expanded into a list of canonical names. "
+     "**WARNING**: `resolve_canonical_bootstrap_servers_only` "
+     "must only be used with `GSSAPI` (Kerberos) as `sasl.mechanism`, "
+     "as it's the only purpose of this configuration value. "
+     "**NOTE**: Default here is different from the Java client's default "
+     "behavior, which connects only to the first IP address returned for a "
+     "hostname. ",
+     .vdef = RD_KAFKA_USE_ALL_DNS_IPS,
+     .s2i  = {{RD_KAFKA_USE_ALL_DNS_IPS, "use_all_dns_ips"},
+             {RD_KAFKA_RESOLVE_CANONICAL_BOOTSTRAP_SERVERS_ONLY,
+              "resolve_canonical_bootstrap_servers_only"}}},
+    {_RK_GLOBAL, "enable.metrics.push", _RK_C_BOOL, _RK(enable_metrics_push),
+     "Whether to enable pushing of client metrics to the cluster, if the "
+     "cluster has a client metrics subscription which matches this client",
+     0, 1, 1},
+
 
 
     /*
@@ -2764,6 +2855,16 @@ void rd_kafka_conf_set_open_cb(rd_kafka_conf_t *conf,
 }
 #endif
 
+void rd_kafka_conf_set_resolve_cb(
+    rd_kafka_conf_t *conf,
+    int (*resolve_cb)(const char *node,
+                      const char *service,
+                      const struct addrinfo *hints,
+                      struct addrinfo **res,
+                      void *opaque)) {
+        rd_kafka_anyconf_set_internal(_RK_GLOBAL, conf, "resolve_cb",
+                                      resolve_cb);
+}
 
 rd_kafka_conf_res_t rd_kafka_conf_set_ssl_cert_verify_cb(
     rd_kafka_conf_t *conf,
@@ -3867,6 +3968,10 @@ const char *rd_kafka_conf_finalize(rd_kafka_type_t cltype,
                 conf->sparse_connect_intvl =
                     RD_MAX(11, RD_MIN(conf->reconnect_backoff_ms / 2, 1000));
         }
+        if (!rd_kafka_conf_is_modified(
+                conf, "topic.metadata.refresh.fast.interval.ms"))
+                conf->metadata_refresh_fast_interval_ms =
+                    conf->retry_backoff_ms;
 
         if (!rd_kafka_conf_is_modified(conf, "connections.max.idle.ms") &&
             conf->brokerlist && rd_strcasestr(conf->brokerlist, "azure")) {
@@ -4055,6 +4160,31 @@ int rd_kafka_conf_warn(rd_kafka_t *rk) {
                              "recommend not using set_default_topic_conf");
 
         /* Additional warnings */
+        if (rk->rk_conf.retry_backoff_ms > rk->rk_conf.retry_backoff_max_ms) {
+                rd_kafka_log(
+                    rk, LOG_WARNING, "CONFWARN",
+                    "Configuration `retry.backoff.ms` with value %d is greater "
+                    "than configuration `retry.backoff.max.ms` with value %d. "
+                    "A static backoff with value `retry.backoff.max.ms` will "
+                    "be applied.",
+                    rk->rk_conf.retry_backoff_ms,
+                    rk->rk_conf.retry_backoff_max_ms);
+        }
+
+        if (rd_kafka_conf_is_modified(
+                &rk->rk_conf, "topic.metadata.refresh.fast.interval.ms") &&
+            rk->rk_conf.metadata_refresh_fast_interval_ms >
+                rk->rk_conf.retry_backoff_max_ms) {
+                rd_kafka_log(
+                    rk, LOG_WARNING, "CONFWARN",
+                    "Configuration `topic.metadata.refresh.fast.interval.ms` "
+                    "with value %d is greater than configuration "
+                    "`retry.backoff.max.ms` with value %d. "
+                    "A static backoff with value `retry.backoff.max.ms` will "
+                    "be applied.",
+                    rk->rk_conf.metadata_refresh_fast_interval_ms,
+                    rk->rk_conf.retry_backoff_max_ms);
+        }
         if (rk->rk_type == RD_KAFKA_CONSUMER) {
                 if (rk->rk_conf.fetch_wait_max_ms + 1000 >
                     rk->rk_conf.socket_timeout_ms)
